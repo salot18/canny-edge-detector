@@ -6,19 +6,19 @@
 // CAR IMAGE
 // #define N 278 // height
 // #define M 420 // width
-// #define filename "./444/car_420x278_444.yuv"
+// #define filename "car_420x278_444.yuv"
 // #define file_yuv "outputCar.yuv"
 
 // CAT
 #define N 332
 #define M 498
-#define filename "./444/cat_498x332_444.yuv"
+#define filename "cat_498x332_444.yuv"
 #define file_yuv "outputCat.yuv"
 
 // SUNFLOWER
 // #define N 200 // height
 // #define M 200 // width
-// #define filename "./444/sunflower_200x200_444.yuv"
+// #define filename "sunflower_200x200_444.yuv"
 // #define file_yuv "outputFlower.yuv"
 
 /* code for armulator*/
