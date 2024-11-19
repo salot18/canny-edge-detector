@@ -34,8 +34,8 @@ void read_img(void);
 void write_img(char *name);
 
 void gaussianBlur(int **channel, int size, int sigma, int **output);
-int **sobel(int **channel);
-int **nms(int **gradMag, int **gradDir);
+double **sobel(int **channel);
+int **nms(int **gradMag, double **gradDir);
 int **thresholding(int **channel, int low, int high, int weak);
 int **hysteresis(int **channel, int weak);
 
@@ -46,6 +46,7 @@ void sobelKernelY(double **kernel);
 void convolution(int **image, int kernelSize, double **kernel, int **output);
 
 int **allocate2DArray(int rows, int cols);
+double **allocate2DArrayDouble(int rows, int cols);
 void copyFromDynamicToStatic(int **source, int destination[N][M], int rows, int cols);
 void copyFromStaticToDynamic(int source[N][M], int **destination, int rows, int cols);
 void free2DArray(int **array, int rows, int cols);
@@ -56,9 +57,9 @@ int main()
     int **yChannel = allocate2DArray(N, M);
     int **blurredImage = allocate2DArray(N, M);
     // int **sobelImage = allocate2DArray(N, M);
-    int **sobelImage;
+    double **sobelImage;
     int **gradMag = allocate2DArray(N, M);
-    int **gradDir = allocate2DArray(N, M);
+    double **gradDir = allocate2DArrayDouble(N, M);
     // int **nmsImage = allocate2DArray(N, M);
     int **nmsImage;
     // int **tImage = allocate2DArray(N, M);
@@ -81,7 +82,7 @@ int main()
     {
         for (j = 0; j < M; j++)
         {
-            gradMag[i][j] = sobelImage[i][j];
+            gradMag[i][j] = (int)sobelImage[i][j];
             gradDir[i][j] = sobelImage[i + N][j];
         }
     }
@@ -106,9 +107,9 @@ int main()
     // deallocate memory from dynamic arrays
     free2DArray(yChannel, N, M);
     free2DArray(blurredImage, N, M);
-    free2DArray(sobelImage, N, M);
+    free2DArrayDouble(sobelImage, 2 * N, M);
     free2DArray(gradMag, N, M);
-    free2DArray(gradDir, N, M);
+    free2DArrayDouble(gradDir, N, M);
     free2DArray(nmsImage, N, M);
     free2DArray(tImage, N, M);
     free2DArray(hImage, N, M);
@@ -184,9 +185,9 @@ void gaussianBlur(int **channel, int size, int sigma, int **output)
     free2DArrayDouble(kernel, kernelSize, kernelSize);
 }
 
-int **sobel(int **channel)
+double **sobel(int **channel)
 {
-    int **output = allocate2DArray(2 * N, M);
+    double **output = allocate2DArrayDouble(2 * N, M);
     int i, j;
     int **gradX = allocate2DArray(N, M);
     int **gradY = allocate2DArray(N, M);
@@ -239,7 +240,7 @@ int **sobel(int **channel)
     {
         for (j = 0; j < M; j++)
         {
-            output[i][j] = atan2(gradY[i - N][j], gradX[i - N][j]) * 180 / 3.14159265359;
+            output[i][j] = (atan2(gradY[i - N][j], gradX[i - N][j]) * 180 / 3.14159265359) + 180;
         }
     }
 
@@ -256,10 +257,11 @@ int **sobel(int **channel)
     return output;
 }
 
-int **nms(int **gradMag, int **gradDir)
+int **nms(int **gradMag, double **gradDir)
 {
     int **output = allocate2DArray(N, M);
-    int dir, beforePixel, afterPixel;
+    int beforePixel, afterPixel;
+    double dir;
     int PI = 180;
     for (i = 1; i < N - 1; i++)
     {
@@ -267,17 +269,17 @@ int **nms(int **gradMag, int **gradDir)
         {
             dir = gradDir[i][j];
 
-            if (((0 <= dir) && (dir < PI / 8)) || ((15 * PI / 8 <= dir) && (dir <= 2 * PI)))
+            if (((0 <= dir) || (dir < PI / 8)) || ((15 * PI / 8 <= dir) || (dir <= 2 * PI)))
             {
                 beforePixel = gradMag[i][j - 1];
                 afterPixel = gradMag[i][j + 1];
             }
-            else if (((PI / 8 <= dir) && (dir < 3 * PI / 8)) || ((9 * PI / 8 <= dir) && (dir <= 11 * PI / 8)))
+            else if (((PI / 8 <= dir) || (dir < 3 * PI / 8)) || ((9 * PI / 8 <= dir) || (dir <= 11 * PI / 8)))
             {
                 beforePixel = gradMag[i + 1][j - 1];
                 afterPixel = gradMag[i - 1][j + 1];
             }
-            else if (((3 * PI / 8 <= dir) && (dir < 5 * PI / 8)) || ((11 * PI / 8 <= dir) && (dir <= 13 * PI / 8)))
+            else if (((3 * PI / 8 <= dir) || (dir < 5 * PI / 8)) || ((11 * PI / 8 <= dir) || (dir <= 13 * PI / 8)))
             {
                 beforePixel = gradMag[i - 1][j];
                 afterPixel = gradMag[i + 1][j];
@@ -568,6 +570,37 @@ int **allocate2DArray(int rows, int cols)
     for (i = 0; i < rows; i++)
     {
         array[i] = (int *)malloc(cols * sizeof(int));
+        if (array[i] == NULL)
+        {
+            perror("Failed to allocate memory for columns");
+            // Free already allocated rows
+            for (j = 0; j < i; j++)
+            {
+                free(array[j]);
+            }
+            free(array);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    return array;
+}
+
+double **allocate2DArrayDouble(int rows, int cols)
+{
+    int i, j;
+    // Allocate memory for the row pointers
+    double **array = (double **)malloc(rows * sizeof(double *));
+    if (array == NULL)
+    {
+        perror("Failed to allocate memory for rows");
+        exit(EXIT_FAILURE);
+    }
+
+    // Allocate memory for each row
+    for (i = 0; i < rows; i++)
+    {
+        array[i] = (double *)malloc(cols * sizeof(double));
         if (array[i] == NULL)
         {
             perror("Failed to allocate memory for columns");
