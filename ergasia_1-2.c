@@ -33,9 +33,9 @@ int i, j;
 void read_img(void);
 void write_img(char *name);
 
-int **gaussianBlur(int **channel, int size, int sigma);
-int **sobel(int **channel);
-int **nms(int **gradMag, int **gradDir);
+void gaussianBlur(int **channel, int size, int sigma, int **output);
+double **sobel(int **channel);
+int **nms(int **gradMag, double **gradDir);
 int **thresholding(int **channel, int low, int high, int weak);
 int **hysteresis(int **channel, int weak);
 
@@ -43,40 +43,46 @@ void copyArray(int **source, int **destination, int rows, int cols);
 double **gaussianKernel(int size, int sigma);
 void sobelKernelX(double **kernel);
 void sobelKernelY(double **kernel);
-int **convolution(int **image, int kernelSize, double **kernel);
+void convolution(int **image, int kernelSize, double **kernel, int **output);
 
-// If your 2D arrays are stored as a single contiguous block of memory (e.g., a flattened 1D array), you can use memcpy for faster copying:
 int **allocate2DArray(int rows, int cols);
+double **allocate2DArrayDouble(int rows, int cols);
 void copyFromDynamicToStatic(int **source, int destination[N][M], int rows, int cols);
 void copyFromStaticToDynamic(int source[N][M], int **destination, int rows, int cols);
+void free2DArray(int **array, int rows, int cols);
+void free2DArrayDouble(double **array, int rows, int cols);
 
 int main()
 {
     int **yChannel = allocate2DArray(N, M);
     int **blurredImage = allocate2DArray(N, M);
-    int **sobelImage = allocate2DArray(N, M);
+    // int **sobelImage = allocate2DArray(N, M);
+    double **sobelImage;
     int **gradMag = allocate2DArray(N, M);
-    int **gradDir = allocate2DArray(N, M);
-    int **nmsImage = allocate2DArray(N, M);
-    int **tImage = allocate2DArray(N, M);
-    int **hImage = allocate2DArray(N, M);
-    int weak = 50;
+    double **gradDir = allocate2DArrayDouble(N, M);
+    // int **nmsImage = allocate2DArray(N, M);
+    int **nmsImage;
+    // int **tImage = allocate2DArray(N, M);
+    int **tImage;
+    // int **hImage = allocate2DArray(N, M);
+    int **hImage;
+    int weak = 100;
 
     read_img();
 
     copyFromStaticToDynamic(current_y, yChannel, N, M);
     // 1. Gaussian Blur
-    blurredImage = gaussianBlur(yChannel, 7, 1);
+    gaussianBlur(yChannel, 7, 1, blurredImage);
     copyFromDynamicToStatic(blurredImage, current_y, N, M);
     write_img("BlurredImage.yuv");
 
     // 2. Sobel Filter
     sobelImage = sobel(blurredImage);
-    for (int i = 0; i < N; i++)
+    for (i = 0; i < N; i++)
     {
-        for (int j = 0; j < M; j++)
+        for (j = 0; j < M; j++)
         {
-            gradMag[i][j] = sobelImage[i][j];
+            gradMag[i][j] = (int)sobelImage[i][j];
             gradDir[i][j] = sobelImage[i + N][j];
         }
     }
@@ -90,13 +96,23 @@ int main()
 
     // // 4. Hysterisis Thresholding
     tImage = thresholding(nmsImage, 5, 50, weak);
-    copyFromDynamicToStatic(nmsImage, current_y, N, M);
+    copyFromDynamicToStatic(tImage, current_y, N, M);
     write_img("ThreshImage.yuv");
 
     hImage = hysteresis(tImage, weak);
     copyFromDynamicToStatic(hImage, current_y, N, M);
 
     write_img("FinalImage.yuv");
+
+    // deallocate memory from dynamic arrays
+    free2DArray(yChannel, N, M);
+    free2DArray(blurredImage, N, M);
+    free2DArrayDouble(sobelImage, 2 * N, M);
+    free2DArray(gradMag, N, M);
+    free2DArrayDouble(gradDir, N, M);
+    free2DArray(nmsImage, N, M);
+    free2DArray(tImage, N, M);
+    free2DArray(hImage, N, M);
 
     return 0;
 }
@@ -150,28 +166,10 @@ void write_img(char *name)
         }
     }
 
-    // for (i = 0; i < N; i++)
-    // {
-    //     for (j = 0; j < M; j++)
-    //     {
-    //         // fputc(current_u[i][j], frame_yuv);
-    //         fputc(0, frame_yuv);
-    //     }
-    // }
-
-    // for (i = 0; i < N; i++)
-    // {
-    //     for (j = 0; j < M; j++)
-    //     {
-    //         // fputc(current_v[i][j], frame_yuv);
-    //         fputc(0, frame_yuv);
-    //     }
-    // }
-
     fclose(frame_yuv);
 }
 
-int **gaussianBlur(int **channel, int size, int sigma)
+void gaussianBlur(int **channel, int size, int sigma, int **output)
 {
     int kernelSize = size;
     int kernelCenter = kernelSize / 2;
@@ -183,15 +181,16 @@ int **gaussianBlur(int **channel, int size, int sigma)
     copyArray(channel, copyChannel, N, M);
 
     // Allocate memory for the blurred channel
-    return convolution(channel, kernelSize, kernel);
+    convolution(channel, kernelSize, kernel, output);
+    free2DArrayDouble(kernel, kernelSize, kernelSize);
 }
 
-int **sobel(int **channel)
+double **sobel(int **channel)
 {
-    int **output = allocate2DArray(2 * N, M);
+    double **output = allocate2DArrayDouble(2 * N, M);
     int i, j;
-    int **gradX;
-    int **gradY;
+    int **gradX = allocate2DArray(N, M);
+    int **gradY = allocate2DArray(N, M);
 
     // Allocate memory for the Sobel kernel
     double **Gx = malloc(3 * sizeof(double *));
@@ -208,8 +207,8 @@ int **sobel(int **channel)
 
     sobelKernelX(Gx);
     sobelKernelY(Gy);
-    gradX = convolution(channel, 3, Gx);
-    gradY = convolution(channel, 3, Gy);
+    convolution(channel, 3, Gx, gradX);
+    convolution(channel, 3, Gy, gradY);
 
     // Gradient Magnitude
 
@@ -241,7 +240,7 @@ int **sobel(int **channel)
     {
         for (j = 0; j < M; j++)
         {
-            output[i][j] = atan2(gradY[i - N][j], gradX[i - N][j]) * 180 / 3.14159265359;
+            output[i][j] = (atan2(gradY[i - N][j], gradX[i - N][j]) * 180 / 3.14159265359) + 180;
         }
     }
 
@@ -252,14 +251,17 @@ int **sobel(int **channel)
     }
     free(Gx);
     free(Gy);
+    free2DArray(gradX, N, M);
+    free2DArray(gradY, N, M);
 
     return output;
 }
 
-int **nms(int **gradMag, int **gradDir)
+int **nms(int **gradMag, double **gradDir)
 {
     int **output = allocate2DArray(N, M);
-    int dir, beforePixel, afterPixel;
+    int beforePixel, afterPixel;
+    double dir;
     int PI = 180;
     for (i = 1; i < N - 1; i++)
     {
@@ -267,17 +269,17 @@ int **nms(int **gradMag, int **gradDir)
         {
             dir = gradDir[i][j];
 
-            if ((0 <= dir < PI / 8) || (15 * PI / 8 <= dir <= 2 * PI))
+            if (((0 <= dir) || (dir < PI / 8)) || ((15 * PI / 8 <= dir) || (dir <= 2 * PI)))
             {
                 beforePixel = gradMag[i][j - 1];
                 afterPixel = gradMag[i][j + 1];
             }
-            else if ((PI / 8 <= dir < 3 * PI / 8) || (9 * PI / 8 <= dir <= 11 * PI / 8))
+            else if (((PI / 8 <= dir) || (dir < 3 * PI / 8)) || ((9 * PI / 8 <= dir) || (dir <= 11 * PI / 8)))
             {
                 beforePixel = gradMag[i + 1][j - 1];
                 afterPixel = gradMag[i - 1][j + 1];
             }
-            else if ((3 * PI / 8 <= dir < 5 * PI / 8) || (11 * PI / 8 <= dir <= 13 * PI / 8))
+            else if (((3 * PI / 8 <= dir) || (dir < 5 * PI / 8)) || ((11 * PI / 8 <= dir) || (dir <= 13 * PI / 8)))
             {
                 beforePixel = gradMag[i - 1][j];
                 afterPixel = gradMag[i + 1][j];
@@ -291,6 +293,10 @@ int **nms(int **gradMag, int **gradDir)
             if (gradMag[i][j] >= beforePixel && gradMag[i][j] >= afterPixel)
             {
                 output[i][j] = gradMag[i][j];
+            }
+            else
+            {
+                output[i][j] = 0;
             }
         }
     }
@@ -443,6 +449,11 @@ int **hysteresis(int **channel, int weak)
         }
     }
 
+    free2DArray(topToBottom, N, M);
+    free2DArray(bottomToTop, N, M);
+    free2DArray(rightToLeft, N, M);
+    free2DArray(leftToRight, N, M);
+
     return output;
 }
 
@@ -507,26 +518,26 @@ void sobelKernelY(double **kernel)
 
 void copyArray(int **source, int **destination, int rows, int cols)
 {
-    for (int i = 0; i < rows; i++)
+    for (i = 0; i < rows; i++)
     {
-        for (int j = 0; j < cols; j++)
+        for (j = 0; j < cols; j++)
         {
             destination[i][j] = source[i][j];
         }
     }
 }
 
-int **convolution(int **image, int kernelSize, double **kernel)
+void convolution(int **image, int kernelSize, double **kernel, int **output)
 {
     int i, j, ki, kj;
     int kernelCenter = kernelSize / 2;
     int sum = 0;
 
-    int **output = malloc(N * sizeof(int *));
+    // int **output = malloc(N * sizeof(int *));
 
     for (i = 0; i < N; i++)
     {
-        output[i] = malloc(M * sizeof(int));
+        // output[i] = malloc(M * sizeof(int));
         for (j = 0; j < M; j++)
         {
             sum = 0;
@@ -545,11 +556,12 @@ int **convolution(int **image, int kernelSize, double **kernel)
         }
     }
 
-    return output;
+    // return output;
 }
 
 int **allocate2DArray(int rows, int cols)
 {
+    int i, j;
     // Allocate memory for the row pointers
     int **array = (int **)malloc(rows * sizeof(int *));
     if (array == NULL)
@@ -559,14 +571,45 @@ int **allocate2DArray(int rows, int cols)
     }
 
     // Allocate memory for each row
-    for (int i = 0; i < rows; i++)
+    for (i = 0; i < rows; i++)
     {
         array[i] = (int *)malloc(cols * sizeof(int));
         if (array[i] == NULL)
         {
             perror("Failed to allocate memory for columns");
             // Free already allocated rows
-            for (int j = 0; j < i; j++)
+            for (j = 0; j < i; j++)
+            {
+                free(array[j]);
+            }
+            free(array);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    return array;
+}
+
+double **allocate2DArrayDouble(int rows, int cols)
+{
+    int i, j;
+    // Allocate memory for the row pointers
+    double **array = (double **)malloc(rows * sizeof(double *));
+    if (array == NULL)
+    {
+        perror("Failed to allocate memory for rows");
+        exit(EXIT_FAILURE);
+    }
+
+    // Allocate memory for each row
+    for (i = 0; i < rows; i++)
+    {
+        array[i] = (double *)malloc(cols * sizeof(double));
+        if (array[i] == NULL)
+        {
+            perror("Failed to allocate memory for columns");
+            // Free already allocated rows
+            for (j = 0; j < i; j++)
             {
                 free(array[j]);
             }
@@ -580,9 +623,10 @@ int **allocate2DArray(int rows, int cols)
 
 void copyFromDynamicToStatic(int **source, int destination[N][M], int rows, int cols)
 {
-    for (int i = 0; i < rows; i++)
+    int i, j;
+    for (i = 0; i < rows; i++)
     {
-        for (int j = 0; j < cols; j++)
+        for (j = 0; j < cols; j++)
         {
             destination[i][j] = source[i][j];
         }
@@ -591,11 +635,32 @@ void copyFromDynamicToStatic(int **source, int destination[N][M], int rows, int 
 
 void copyFromStaticToDynamic(int source[N][M], int **destination, int rows, int cols)
 {
-    for (int i = 0; i < rows; i++)
+    int i, j;
+    for (i = 0; i < rows; i++)
     {
-        for (int j = 0; j < cols; j++)
+        for (j = 0; j < cols; j++)
         {
             destination[i][j] = source[i][j];
         }
     }
+}
+
+void free2DArray(int **array, int rows, int cols)
+{
+    int i, j;
+    for (i = 0; i < rows; i++)
+    {
+        free(array[i]);
+    }
+    free(array);
+}
+
+void free2DArrayDouble(double **array, int rows, int cols)
+{
+    int i, j;
+    for (i = 0; i < rows; i++)
+    {
+        free(array[i]);
+    }
+    free(array);
 }
