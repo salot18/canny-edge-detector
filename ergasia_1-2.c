@@ -65,7 +65,7 @@ int main()
     int **tImage;
     // int **hImage = allocate2DArray(N, M);
     int **hImage;
-    int weak = 50;
+    int weak = 100;
 
     read_img();
 
@@ -77,9 +77,9 @@ int main()
 
     // 2. Sobel Filter
     sobelImage = sobel(blurredImage);
-    for (int i = 0; i < N; i++)
+    for (i = 0; i < N; i++)
     {
-        for (int j = 0; j < M; j++)
+        for (j = 0; j < M; j++)
         {
             gradMag[i][j] = sobelImage[i][j];
             gradDir[i][j] = sobelImage[i + N][j];
@@ -267,17 +267,17 @@ int **nms(int **gradMag, int **gradDir)
         {
             dir = gradDir[i][j];
 
-            if ((0 <= dir < PI / 8) || (15 * PI / 8 <= dir <= 2 * PI))
+            if (((0 <= dir) && (dir < PI / 8)) || ((15 * PI / 8 <= dir) && (dir <= 2 * PI)))
             {
                 beforePixel = gradMag[i][j - 1];
                 afterPixel = gradMag[i][j + 1];
             }
-            else if ((PI / 8 <= dir < 3 * PI / 8) || (9 * PI / 8 <= dir <= 11 * PI / 8))
+            else if (((PI / 8 <= dir) && (dir < 3 * PI / 8)) || ((9 * PI / 8 <= dir) && (dir <= 11 * PI / 8)))
             {
                 beforePixel = gradMag[i + 1][j - 1];
                 afterPixel = gradMag[i - 1][j + 1];
             }
-            else if ((3 * PI / 8 <= dir < 5 * PI / 8) || (11 * PI / 8 <= dir <= 13 * PI / 8))
+            else if (((3 * PI / 8 <= dir) && (dir < 5 * PI / 8)) || ((11 * PI / 8 <= dir) && (dir <= 13 * PI / 8)))
             {
                 beforePixel = gradMag[i - 1][j];
                 afterPixel = gradMag[i + 1][j];
@@ -512,9 +512,9 @@ void sobelKernelY(double **kernel)
 
 void copyArray(int **source, int **destination, int rows, int cols)
 {
-    for (int i = 0; i < rows; i++)
+    for (i = 0; i < rows; i++)
     {
-        for (int j = 0; j < cols; j++)
+        for (j = 0; j < cols; j++)
         {
             destination[i][j] = source[i][j];
         }
