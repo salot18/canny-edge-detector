@@ -294,6 +294,10 @@ int **nms(int **gradMag, double **gradDir)
             {
                 output[i][j] = gradMag[i][j];
             }
+            else
+            {
+                output[i][j] = 0;
+            }
         }
     }
 
