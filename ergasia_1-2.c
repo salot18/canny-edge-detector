@@ -613,10 +613,7 @@ void free2DArray(int **array, int rows, int cols)
     int i, j;
     for (i = 0; i < rows; i++)
     {
-        for (j = 0; j < cols; j++)
-        {
-            free(array[i]);
-        }
+        free(array[i]);
     }
     free(array);
 }
@@ -626,10 +623,7 @@ void free2DArrayDouble(double **array, int rows, int cols)
     int i, j;
     for (i = 0; i < rows; i++)
     {
-        for (j = 0; j < cols; j++)
-        {
-            free(array[i]);
-        }
+        free(array[i]);
     }
     free(array);
 }
