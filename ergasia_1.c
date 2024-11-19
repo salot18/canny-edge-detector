@@ -1,20 +1,26 @@
+#define _USE_MATH_DEFINES
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
 
 // CAR IMAGE
-#define N 278 // height
-#define M 420 // width
-// #define filename "_test.yuv"
-#define filename "car_420x278_444.yuv"
-#define file_yuv "outputCar.yuv"
+// #define N 278 // height
+// #define M 420 // width
+// #define filename "./444/car_420x278_444.yuv"
+// #define file_yuv "outputCar.yuv"
+
+// CAT
+#define N 332
+#define M 498
+#define filename "./444/cat_498x332_444.yuv"
+#define file_yuv "outputCat.yuv"
 
 // SUNFLOWER
 // #define N 200 // height
 // #define M 200 // width
-// #define filename "sunflower_200x200_444.yuv"
-// #define file_yuv "output.yuv"
+// #define filename "./444/sunflower_200x200_444.yuv"
+// #define file_yuv "outputFlower.yuv"
 
 /* code for armulator*/
 #pragma arm section zidata = "ram"
@@ -24,18 +30,6 @@ int current_v[N][M];
 #pragma arm section
 
 int i, j;
-
-// Sobel kernels
-// int Gx[3][3] = {
-//     {-1, 0, 1},
-//     {-2, 0, 2},
-//     {-1, 0, 1}};
-
-// int Gy[3][3] = {
-//     {1, 2, 1},
-//     {0, 0, 0},
-//     {-1, -2, -1}};
-// (*arr)[3]
 
 void read();
 void write();
@@ -102,6 +96,7 @@ void read()
             current_y[i][j] = fgetc(frame_c);
         }
     }
+
     for (i = 0; i < N; i++)
     {
         for (j = 0; j < M; j++)
@@ -109,6 +104,7 @@ void read()
             current_u[i][j] = fgetc(frame_c);
         }
     }
+
     for (i = 0; i < N; i++)
     {
         for (j = 0; j < M; j++)
@@ -166,35 +162,6 @@ void gaussianBlur(int channel[N][M], int size, int sigma, int output[N][M])
     copyArray(channel, copyChannel);
     // Allocate memory for the blurred channel
     convolution(channel, kernelSize, kernel, output);
-
-    // output = blurredChannel;
-    // copyArray(blurredChannel, output);
-
-    // int ki, kj;
-    // for (i = 0; i < N; i++)
-    // {
-    //     for (j = 0; j < M; j++)
-    //     {
-    //         int sum = 0;
-    //         for (ki = -kernelCenter; ki < kernelCenter; ki++)
-    //         {
-    //             for (kj = -kernelCenter; kj < kernelCenter; kj++)
-    //             {
-    //                 if (i + ki < 0 || i + ki > N - 1 || j + kj < 0 || j + kj > M - 1)
-    //                 {
-    //                     continue;
-    //                 }
-    //                 else
-    //                 {
-
-    //                     sum += copyChannel[i + ki][j + kj] * kernel[ki + kernelCenter][kj + kernelCenter];
-    //                 }
-    //             }
-    //         }
-
-    //         channel[i][j] = sum;
-    //     }
-    // }
 }
 
 void sobel(int channel[N][M], int gradMag[N][M], double gradDir[N][M])
@@ -216,54 +183,6 @@ void sobel(int channel[N][M], int gradMag[N][M], double gradDir[N][M])
     sobelKernelY(Gy);
     convolution(channel, 3, Gx, gradX);
     convolution(channel, 3, Gy, gradY);
-
-    // // Get SobelX
-    // double maxSobelX = 0;
-    // for (i = 0; i < N; i++)
-    // {
-    //     for (j = 0; j < M; j++)
-    //     {
-    //         if (sobelX[i][j] > maxSobelX)
-    //         {
-    //             maxSobelX = sobelX[i][j];
-    //         }
-    //     }
-    // }
-
-    // double normCoeff = 255.0 / maxSobelX;
-    // for (i = 0; i < N; i++)
-    // {
-    //     for (j = 0; j < M; j++)
-    //     {
-
-    //         sobelX[i][j] = (int)fmin(sobelX[i][j] * normCoeff, 255);
-    //     }
-    // }
-    // copyArray(sobelX, output);
-
-    // // Get SobelY
-    // double maxSobelY = 0;
-    // for (i = 0; i < N; i++)
-    // {
-    //     for (j = 0; j < M; j++)
-    //     {
-    //         if (sobelX[i][j] > maxSobelY)
-    //         {
-    //             maxSobelY = sobelY[i][j];
-    //         }
-    //     }
-    // }
-
-    // double normCoeff = 255.0 / maxSobelY;
-    // for (i = 0; i < N; i++)
-    // {
-    //     for (j = 0; j < M; j++)
-    //     {
-
-    //         sobelY[i][j] = (int)fmin(sobelY[i][j] * normCoeff, 255);
-    //     }
-    // }
-    // copyArray(sobelY, output);
 
     // Gradient Magnitude
     double maxG = 0;
@@ -294,7 +213,7 @@ void sobel(int channel[N][M], int gradMag[N][M], double gradDir[N][M])
     {
         for (j = 0; j < M; j++)
         {
-            gradDir[i][j] = atan2(gradY[i][j], gradX[i][j]) * 180 / 3.14159265358979323846;
+            gradDir[i][j] = atan2(gradY[i][j], gradX[i][j]) * 180 / M_PI;
         }
     }
 
@@ -384,7 +303,10 @@ void hysteresis(int channel[N][M], int weak, int output[N][M])
         {
             if (topToBottom[i][j] == weak)
             {
-                if (topToBottom[i][j + 1] == 255 || topToBottom[i][j - 1] == 255 || topToBottom[i - 1][j] == 255 || topToBottom[i + 1][j] == 255 || topToBottom[i - 1][j - 1] == 255 || topToBottom[i + 1][j - 1] == 255 || topToBottom[i - 1][j + 1] == 255 || topToBottom[i + 1][j + 1] == 255)
+                if (topToBottom[i][j + 1] == 255 || topToBottom[i][j - 1] == 255 ||
+                    topToBottom[i - 1][j] == 255 || topToBottom[i + 1][j] == 255 || 
+                    topToBottom[i - 1][j - 1] == 255 || topToBottom[i + 1][j - 1] == 255 || 
+                    topToBottom[i - 1][j + 1] == 255 || topToBottom[i + 1][j + 1] == 255)
                 {
                     topToBottom[i][j] = 255;
                 }
@@ -402,7 +324,10 @@ void hysteresis(int channel[N][M], int weak, int output[N][M])
         {
             if (bottomToTop[i][j] == weak)
             {
-                if (bottomToTop[i][j + 1] == 255 || bottomToTop[i][j - 1] == 255 || bottomToTop[i - 1][j] == 255 || bottomToTop[i + 1][j] == 255 || bottomToTop[i - 1][j - 1] == 255 || bottomToTop[i + 1][j - 1] == 255 || bottomToTop[i - 1][j + 1] == 255 || bottomToTop[i + 1][j + 1] == 255)
+                if (bottomToTop[i][j + 1] == 255 || bottomToTop[i][j - 1] == 255 || 
+                    bottomToTop[i - 1][j] == 255 || bottomToTop[i + 1][j] == 255 || 
+                    bottomToTop[i - 1][j - 1] == 255 || bottomToTop[i + 1][j - 1] == 255 || 
+                    bottomToTop[i - 1][j + 1] == 255 || bottomToTop[i + 1][j + 1] == 255)
                 {
 
                     bottomToTop[i][j] = 255;
@@ -421,7 +346,10 @@ void hysteresis(int channel[N][M], int weak, int output[N][M])
         {
             if (rightToLeft[i][j] == weak)
             {
-                if (rightToLeft[i][j + 1] == 255 || rightToLeft[i][j - 1] == 255 || rightToLeft[i - 1][j] == 255 || rightToLeft[i + 1][j] == 255 || rightToLeft[i - 1][j - 1] == 255 || rightToLeft[i + 1][j - 1] == 255 || rightToLeft[i - 1][j + 1] == 255 || rightToLeft[i + 1][j + 1] == 255)
+                if (rightToLeft[i][j + 1] == 255 || rightToLeft[i][j - 1] == 255 || 
+                    rightToLeft[i - 1][j] == 255 || rightToLeft[i + 1][j] == 255 || 
+                    rightToLeft[i - 1][j - 1] == 255 || rightToLeft[i + 1][j - 1] == 255 || 
+                    rightToLeft[i - 1][j + 1] == 255 || rightToLeft[i + 1][j + 1] == 255)
                 {
 
                     rightToLeft[i][j] = 255;
@@ -441,7 +369,10 @@ void hysteresis(int channel[N][M], int weak, int output[N][M])
         {
             if (leftToRight[i][j] == weak)
             {
-                if (leftToRight[i][j + 1] == 255 || leftToRight[i][j - 1] == 255 || leftToRight[i - 1][j] == 255 || leftToRight[i + 1][j] == 255 || leftToRight[i - 1][j - 1] == 255 || leftToRight[i + 1][j - 1] == 255 || leftToRight[i - 1][j + 1] == 255 || leftToRight[i + 1][j + 1] == 255)
+                if (leftToRight[i][j + 1] == 255 || leftToRight[i][j - 1] == 255 || 
+                    leftToRight[i - 1][j] == 255 || leftToRight[i + 1][j] == 255 || 
+                    leftToRight[i - 1][j - 1] == 255 || leftToRight[i + 1][j - 1] == 255 || 
+                    leftToRight[i - 1][j + 1] == 255 || leftToRight[i + 1][j + 1] == 255)
                 {
 
                     leftToRight[i][j] = 255;
