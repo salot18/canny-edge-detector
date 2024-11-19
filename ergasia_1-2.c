@@ -90,7 +90,7 @@ int main()
 
     // // 4. Hysterisis Thresholding
     tImage = thresholding(nmsImage, 5, 50, weak);
-    copyFromDynamicToStatic(nmsImage, current_y, N, M);
+    copyFromDynamicToStatic(tImage, current_y, N, M);
     write_img("ThreshImage.yuv");
 
     hImage = hysteresis(tImage, weak);
