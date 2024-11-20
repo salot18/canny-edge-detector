@@ -4,9 +4,9 @@
 #include <stdlib.h>
 
 /* CAR IMAGE */
-#define N 278 // Image height (rows)
-#define M 420 // Image width (cols)
-#define filename "car_420x278_444.yuv"
+// #define N 278 // Image height (rows)
+// #define M 420 // Image width (cols)
+// #define filename "car_420x278_444.yuv"
 
 /* CAT IMAGES */
 // #define N 332
@@ -14,9 +14,11 @@
 // #define filename "cat_498x332_444.yuv"
 
 // SUNFLOWER
-// #define N 200 // height
-// #define M 200 // width
-// #define filename "sunflower_200x200_444.yuv"
+#define N 200 // height
+#define M 200 // width
+#define filename "sunflower_200x200_444.yuv"
+
+#define _PI 3.14159265359
 
 /* code for armulator*/
 #pragma arm section zidata = "ram"
@@ -28,7 +30,7 @@ int current_v[N][M];
 int i, j;
 
 /* FUNCTIONS */
-void readImage();
+void readImage(void);
 void writeImage(char *name);
 
 /* Canny Algorithm */
@@ -52,6 +54,8 @@ void freeDouble2DArray(double **array, int rows, int cols);
 void copyFromDynamicToDynamic(int **source, int **destination, int rows, int cols);
 void copyFromDynamicToStatic(int **source, int destination[N][M], int rows, int cols);
 void copyFromStaticToDynamic(int source[N][M], int **destination, int rows, int cols);
+
+void thresholdCheck(int *channel, int *output, int low, int high, int weak, int strong);
 
 int main()
 {
@@ -113,7 +117,7 @@ int main()
     return 0;
 }
 
-void readImage()
+void readImage(void)
 {
     FILE *frame_c;
     if ((frame_c = fopen(filename, "rb")) == NULL)
@@ -124,25 +128,12 @@ void readImage()
 
     for (i = 0; i < N; i++)
     {
-        for (j = 0; j < M; j++)
+        for (j = 0; j < M; j += 4)
         {
             current_y[i][j] = fgetc(frame_c);
-        }
-    }
-
-    for (i = 0; i < N; i++)
-    {
-        for (j = 0; j < M; j++)
-        {
-            current_u[i][j] = fgetc(frame_c);
-        }
-    }
-
-    for (i = 0; i < N; i++)
-    {
-        for (j = 0; j < M; j++)
-        {
-            current_v[i][j] = fgetc(frame_c);
+            current_y[i][j + 1] = fgetc(frame_c);
+            current_y[i][j + 2] = fgetc(frame_c);
+            current_y[i][j + 3] = fgetc(frame_c);
         }
     }
 
@@ -156,9 +147,12 @@ void writeImage(char *name)
 
     for (i = 0; i < N; i++)
     {
-        for (j = 0; j < M; j++)
+        for (j = 0; j < M; j += 4)
         {
             fputc(current_y[i][j], frame_yuv);
+            fputc(current_y[i][j + 1], frame_yuv);
+            fputc(current_y[i][j + 2], frame_yuv);
+            fputc(current_y[i][j + 3], frame_yuv);
         }
     }
 
@@ -213,18 +207,24 @@ int **sobel(int **channel)
     normCoeff = 255 / maxG;
     for (i = 0; i < N; i++)
     {
-        for (j = 0; j < M; j++)
+        for (j = 0; j < M; j += 4)
         {
             output[i][j] = (output[i][j] * normCoeff > 255) ? 255 : (int)(output[i][j] * normCoeff);
+            output[i][j + 1] = (output[i][j + 1] * normCoeff > 255) ? 255 : (int)(output[i][j + 1] * normCoeff);
+            output[i][j + 2] = (output[i][j + 2] * normCoeff > 255) ? 255 : (int)(output[i][j + 2] * normCoeff);
+            output[i][j + 3] = (output[i][j + 3] * normCoeff > 255) ? 255 : (int)(output[i][j + 3] * normCoeff);
         }
     }
 
     // Gradient Direction
     for (i = N; i < 2 * N; i++)
     {
-        for (j = 0; j < M; j++)
+        for (j = 0; j < M; j += 4)
         {
-            output[i][j] = atan2(gradY[i - N][j], gradX[i - N][j]) * 180 / 3.14159265359;
+            output[i][j] = atan2(gradY[i - N][j], gradX[i - N][j]) * 180 / _PI;
+            output[i][j + 1] = atan2(gradY[i - N][j + 1], gradX[i - N][j + 1]) * 180 / _PI;
+            output[i][j + 2] = atan2(gradY[i - N][j + 2], gradX[i - N][j + 2]) * 180 / _PI;
+            output[i][j + 3] = atan2(gradY[i - N][j + 3], gradX[i - N][j + 3]) * 180 / _PI;
         }
     }
 
@@ -236,6 +236,7 @@ int **sobel(int **channel)
     return output;
 }
 
+// TODO: Loop carried dependency
 int **nms(int **gradMag, int **gradDir)
 {
     int **output = allocate2DIntArray(N, M);
@@ -293,20 +294,12 @@ int **thresholding(int **channel, int low, int high, int weak)
 
     for (i = 0; i < N; i++)
     {
-        for (j = 0; j < M; j++)
+        for (j = 0; j < M; j += 4)
         {
-            if (channel[i][j] >= high)
-            {
-                output[i][j] = strong;
-            }
-            else if (channel[i][j] >= low)
-            {
-                output[i][j] = weak;
-            }
-            else
-            {
-                output[i][j] = 0;
-            }
+            thresholdCheck(&channel[i][j], &output[i][j], low, high, weak, strong);
+            thresholdCheck(&channel[i][j + 1], &output[i][j + 1], low, high, weak, strong);
+            thresholdCheck(&channel[i][j + 2], &output[i][j + 2], low, high, weak, strong);
+            thresholdCheck(&channel[i][j + 3], &output[i][j + 3], low, high, weak, strong);
         }
     }
 
@@ -500,30 +493,45 @@ void sobelKernelY(double **kernel)
 
 void convolution(int **image, int kernelSize, double **kernel, int **output)
 {
-    int i, j, ki, kj;
+    int ki, kj;
     int kernelCenter = kernelSize / 2;
-    int sum = 0;
+    int sum0 = 0, sum1 = 0, sum2 = 0, sum3 = 0;
 
     // int **output = malloc(N * sizeof(int *));
 
     for (i = 0; i < N; i++)
     {
         // output[i] = malloc(M * sizeof(int));
-        for (j = 0; j < M; j++)
+        for (j = 0; j < M; j += 4)
         {
-            sum = 0;
+            sum0 = sum1 = sum2 = sum3 = 0;
             for (ki = -kernelCenter; ki <= kernelCenter; ki++)
             {
                 for (kj = -kernelCenter; kj <= kernelCenter; kj++)
                 {
                     if (i + ki >= 0 && i + ki < N && j + kj >= 0 && j + kj < M)
                     {
-                        sum += image[i + ki][j + kj] * kernel[ki + kernelCenter][kj + kernelCenter];
+                        sum0 += image[i + ki][j + kj] * kernel[ki + kernelCenter][kj + kernelCenter];
+                    }
+                    if (i + ki >= 0 && i + ki < N && j + 1 + kj >= 0 && j + 1 + kj < M)
+                    {
+                        sum1 += image[i + ki][j + 1 + kj] * kernel[ki + kernelCenter][kj + kernelCenter];
+                    }
+                    if (i + ki >= 0 && i + ki < N && j + 2 + kj >= 0 && j + 2 + kj < M)
+                    {
+                        sum2 += image[i + ki][j + 2 + kj] * kernel[ki + kernelCenter][kj + kernelCenter];
+                    }
+                    if (i + ki >= 0 && i + ki < N && j + 3 + kj >= 0 && j + 3 + kj < M)
+                    {
+                        sum3 += image[i + ki][j + 3 + kj] * kernel[ki + kernelCenter][kj + kernelCenter];
                     }
                 }
             }
 
-            output[i][j] = sum;
+            output[i][j] = sum0;
+            output[i][j + 1] = sum1;
+            output[i][j + 2] = sum2;
+            output[i][j + 3] = sum3;
         }
     }
 
@@ -532,7 +540,6 @@ void convolution(int **image, int kernelSize, double **kernel, int **output)
 
 int **allocate2DIntArray(int rows, int cols)
 {
-    int i, j;
     // Allocate memory for the row pointers
     int **array = (int **)malloc(rows * sizeof(int *));
     if (array == NULL)
@@ -563,7 +570,6 @@ int **allocate2DIntArray(int rows, int cols)
 
 double **allocate2DDoubleArray(int rows, int cols)
 {
-    int i, j;
     // Allocate memory for the row pointers
     double **array = (double **)malloc(rows * sizeof(double *));
     if (array == NULL)
@@ -594,20 +600,24 @@ double **allocate2DDoubleArray(int rows, int cols)
 
 void freeInt2DArray(int **array, int rows, int cols)
 {
-    int i, j;
-    for (i = 0; i < rows; i++)
+    for (i = 0; i < rows; i += 4)
     {
         free(array[i]);
+        free(array[i + 1]);
+        free(array[i + 2]);
+        free(array[i + 3]);
     }
     free(array);
 }
 
 void freeDouble2DArray(double **array, int rows, int cols)
 {
-    int i, j;
-    for (i = 0; i < rows; i++)
+    for (i = 0; i < rows; i += 4)
     {
         free(array[i]);
+        free(array[i + 1]);
+        free(array[i + 2]);
+        free(array[i + 3]);
     }
     free(array);
 }
@@ -616,33 +626,56 @@ void copyFromDynamicToDynamic(int **source, int **destination, int rows, int col
 {
     for (i = 0; i < rows; i++)
     {
-        for (j = 0; j < cols; j++)
+        for (j = 0; j < cols; j += 4)
         {
             destination[i][j] = source[i][j];
+            destination[i][j + 1] = source[i][j + 1];
+            destination[i][j + 2] = source[i][j + 2];
+            destination[i][j + 3] = source[i][j + 3];
         }
     }
 }
 
 void copyFromDynamicToStatic(int **source, int destination[N][M], int rows, int cols)
 {
-    int i, j;
     for (i = 0; i < rows; i++)
     {
-        for (j = 0; j < cols; j++)
+        for (j = 0; j < cols; j += 4)
         {
             destination[i][j] = source[i][j];
+            destination[i][j + 1] = source[i][j + 1];
+            destination[i][j + 2] = source[i][j + 2];
+            destination[i][j + 3] = source[i][j + 3];
         }
     }
 }
 
 void copyFromStaticToDynamic(int source[N][M], int **destination, int rows, int cols)
 {
-    int i, j;
     for (i = 0; i < rows; i++)
     {
-        for (j = 0; j < cols; j++)
+        for (j = 0; j < cols; j += 4)
         {
             destination[i][j] = source[i][j];
+            destination[i][j + 1] = source[i][j + 1];
+            destination[i][j + 2] = source[i][j + 2];
+            destination[i][j + 3] = source[i][j + 3];
         }
+    }
+}
+
+void thresholdCheck(int *channel, int *output, int low, int high, int weak, int strong)
+{
+    if (*channel >= high)
+    {
+        *output = strong;
+    }
+    else if (*channel >= low)
+    {
+        *output = weak;
+    }
+    else
+    {
+        *output = 0;
     }
 }
