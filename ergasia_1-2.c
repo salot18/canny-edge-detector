@@ -600,24 +600,24 @@ double **allocate2DDoubleArray(int rows, int cols)
 
 void freeInt2DArray(int **array, int rows, int cols)
 {
-    for (i = 0; i < rows; i += 4)
+    for (i = 0; i < rows; i++)
     {
         free(array[i]);
-        free(array[i + 1]);
-        free(array[i + 2]);
-        free(array[i + 3]);
+        // free(array[i + 1]);
+        // free(array[i + 2]);
+        // free(array[i + 3]);
     }
     free(array);
 }
 
 void freeDouble2DArray(double **array, int rows, int cols)
 {
-    for (i = 0; i < rows; i += 4)
+    for (i = 0; i < rows; i++)
     {
         free(array[i]);
-        free(array[i + 1]);
-        free(array[i + 2]);
-        free(array[i + 3]);
+        // free(array[i + 1]);
+        // free(array[i + 2]);
+        // free(array[i + 3]);
     }
     free(array);
 }
