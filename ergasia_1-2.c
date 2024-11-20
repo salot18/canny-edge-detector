@@ -3,23 +3,20 @@
 #include <string.h>
 #include <stdlib.h>
 
-// CAR IMAGE
-#define N 278 // height
-#define M 420 // width
+/* CAR IMAGE */
+#define N 278 // Image height (rows)
+#define M 420 // Image width (cols)
 #define filename "car_420x278_444.yuv"
-#define file_yuv "outputCar.yuv"
 
-// CAT
+/* CAT IMAGES */
 // #define N 332
 // #define M 498
 // #define filename "cat_498x332_444.yuv"
-// #define file_yuv "outputCat.yuv"
 
 // SUNFLOWER
 // #define N 200 // height
 // #define M 200 // width
 // #define filename "sunflower_200x200_444.yuv"
-// #define file_yuv "outputFlower.yuv"
 
 /* code for armulator*/
 #pragma arm section zidata = "ram"
@@ -30,94 +27,93 @@ int current_v[N][M];
 
 int i, j;
 
-void read_img(void);
-void write_img(char *name);
+/* FUNCTIONS */
+void readImage();
+void writeImage(char *name);
 
+/* Canny Algorithm */
 void gaussianBlur(int **channel, int size, int sigma, int **output);
-double **sobel(int **channel);
-int **nms(int **gradMag, double **gradDir);
+int **sobel(int **channel);
+int **nms(int **gradMag, int **gradDir);
 int **thresholding(int **channel, int low, int high, int weak);
 int **hysteresis(int **channel, int weak);
 
-void copyArray(int **source, int **destination, int rows, int cols);
 double **gaussianKernel(int size, int sigma);
 void sobelKernelX(double **kernel);
 void sobelKernelY(double **kernel);
 void convolution(int **image, int kernelSize, double **kernel, int **output);
 
-int **allocate2DArray(int rows, int cols);
-double **allocate2DArrayDouble(int rows, int cols);
+/* Array Memory Management */
+int **allocate2DIntArray(int rows, int cols);
+double **allocate2DDoubleArray(int rows, int cols);
+void freeInt2DArray(int **array, int rows, int cols);
+void freeDouble2DArray(double **array, int rows, int cols);
+
+void copyFromDynamicToDynamic(int **source, int **destination, int rows, int cols);
 void copyFromDynamicToStatic(int **source, int destination[N][M], int rows, int cols);
 void copyFromStaticToDynamic(int source[N][M], int **destination, int rows, int cols);
-void free2DArray(int **array, int rows, int cols);
-void free2DArrayDouble(double **array, int rows, int cols);
 
 int main()
 {
-    int **yChannel = allocate2DArray(N, M);
-    int **blurredImage = allocate2DArray(N, M);
-    // int **sobelImage = allocate2DArray(N, M);
-    double **sobelImage;
-    int **gradMag = allocate2DArray(N, M);
-    double **gradDir = allocate2DArrayDouble(N, M);
-    // int **nmsImage = allocate2DArray(N, M);
+    int **yChannel = allocate2DIntArray(N, M);
+    int **blurredImage = allocate2DIntArray(N, M);
+    int **sobelImage;
+    int **gradMag = allocate2DIntArray(N, M);
+    int **gradDir = allocate2DIntArray(N, M);
     int **nmsImage;
-    // int **tImage = allocate2DArray(N, M);
     int **tImage;
-    // int **hImage = allocate2DArray(N, M);
     int **hImage;
-    int weak = 100;
+    int weak = 50;
 
-    read_img();
+    readImage();
 
     copyFromStaticToDynamic(current_y, yChannel, N, M);
-    // 1. Gaussian Blur
-    gaussianBlur(yChannel, 7, 1, blurredImage);
-    copyFromDynamicToStatic(blurredImage, current_y, N, M);
-    write_img("BlurredImage.yuv");
 
-    // 2. Sobel Filter
+    /* 1. GAUSSIAN BLUR */
+    gaussianBlur(yChannel, 7, 1, blurredImage); // (image, kernelSize, kernelSigma, output)
+    // copyFromDynamicToStatic(blurredImage, current_y, N, M);  // Get the blurred image
+    // writeImage("BlurredImage.yuv");                            // and save it
+
+    /* 2. SOBEL MASK */
     sobelImage = sobel(blurredImage);
     for (i = 0; i < N; i++)
     {
         for (j = 0; j < M; j++)
         {
-            gradMag[i][j] = (int)sobelImage[i][j];
+            gradMag[i][j] = sobelImage[i][j];
             gradDir[i][j] = sobelImage[i + N][j];
         }
     }
-    copyFromDynamicToStatic(gradMag, current_y, N, M);
-    write_img("GradMagImage.yuv");
+    // copyFromDynamicToStatic(gradMag, current_y, N, M);      // Get the gradient magnitude image
+    // writeImage("GradMagImage.yuv");                           // and save it
 
-    // 3. Non-maximum Suppression
+    /* 3. NON-MAXIMUM SUPPRESSION */
     nmsImage = nms(gradMag, gradDir);
-    copyFromDynamicToStatic(nmsImage, current_y, N, M);
-    write_img("NMSImage.yuv");
+    // copyFromDynamicToStatic(nmsImage, current_y, N, M);     // Get the image afte the nms
+    // writeImage("NMSImage.yuv");                               // and save it
 
-    // // 4. Hysterisis Thresholding
-    tImage = thresholding(nmsImage, 5, 50, weak);
-    copyFromDynamicToStatic(tImage, current_y, N, M);
-    write_img("ThreshImage.yuv");
-
+    /* 4. HYSTERESIS THRESHOLDING */
+    tImage = thresholding(nmsImage, 5, 20, weak); // (image, low, hight, weak)
+    // copyFromDynamicToStatic(tImage, current_y, N, M);       // Get the image after thresholding
+    // writeImage("ThreshImage.yuv");                            // and save it
     hImage = hysteresis(tImage, weak);
-    copyFromDynamicToStatic(hImage, current_y, N, M);
+    copyFromDynamicToStatic(hImage, current_y, N, M); // Get the image after hysteresis (final image)
+    writeImage("FinalImage.yuv");                     // and save it
 
-    write_img("FinalImage.yuv");
-
-    // deallocate memory from dynamic arrays
-    free2DArray(yChannel, N, M);
-    free2DArray(blurredImage, N, M);
-    free2DArrayDouble(sobelImage, 2 * N, M);
-    free2DArray(gradMag, N, M);
-    free2DArrayDouble(gradDir, N, M);
-    free2DArray(nmsImage, N, M);
-    free2DArray(tImage, N, M);
-    free2DArray(hImage, N, M);
+    /* Free memory for all dynamically allocated 2D arrays */
+    freeInt2DArray(yChannel, N, M);
+    freeInt2DArray(blurredImage, N, M);
+    freeInt2DArray(sobelImage, 2 * N, M);
+    freeInt2DArray(gradMag, N, M);
+    freeInt2DArray(gradDir, N, M);
+    freeInt2DArray(nmsImage, N, M);
+    freeInt2DArray(tImage, N, M);
+    freeInt2DArray(hImage, N, M);
 
     return 0;
 }
 
-void read_img()
+void readImage()
 {
     FILE *frame_c;
     if ((frame_c = fopen(filename, "rb")) == NULL)
@@ -153,7 +149,7 @@ void read_img()
     fclose(frame_c);
 }
 
-void write_img(char *name)
+void writeImage(char *name)
 {
     FILE *frame_yuv;
     frame_yuv = fopen(name, "wb");
@@ -169,49 +165,36 @@ void write_img(char *name)
     fclose(frame_yuv);
 }
 
-void gaussianBlur(int **channel, int size, int sigma, int **output)
+void gaussianBlur(int **channel, int kernelSize, int kernelSigma, int **output)
 {
-    int kernelSize = size;
-    int kernelCenter = kernelSize / 2;
-    int kernelSigma = sigma;
-
-    int **copyChannel = allocate2DArray(N, M);
-
+    // Generate the Gaussian kernel for size and sigma
     double **kernel = gaussianKernel(kernelSize, kernelSigma);
-    copyArray(channel, copyChannel, N, M);
 
-    // Allocate memory for the blurred channel
     convolution(channel, kernelSize, kernel, output);
-    free2DArrayDouble(kernel, kernelSize, kernelSize);
+
+    freeDouble2DArray(kernel, kernelSize, kernelSize);
 }
 
-double **sobel(int **channel)
+int **sobel(int **channel)
 {
-    double **output = allocate2DArrayDouble(2 * N, M);
-    int i, j;
-    int **gradX = allocate2DArray(N, M);
-    int **gradY = allocate2DArray(N, M);
-
-    // Allocate memory for the Sobel kernel
-    double **Gx = malloc(3 * sizeof(double *));
-    double **Gy = malloc(3 * sizeof(double *));
-    double maxG = 0.0f;
-    double G = 0.0f;
+    double maxG = 0.0f; // Maximum gradient magnitude value, used for normalization
+    double G = 0.0f;    // Gradient Magnitude
     double normCoeff = 0.0f;
 
-    for (i = 0; i < 3; i++)
-    {
-        Gx[i] = malloc(3 * sizeof(double));
-        Gy[i] = malloc(3 * sizeof(double));
-    }
+    // Allocate memory for the output, the Sobel kernels and the directional gradients
+    int **output = allocate2DIntArray(2 * N, M);
+    int **gradX = allocate2DIntArray(N, M);
+    int **gradY = allocate2DIntArray(N, M);
+    double **Gx = allocate2DDoubleArray(3, 3);
+    double **Gy = allocate2DDoubleArray(3, 3);
 
     sobelKernelX(Gx);
     sobelKernelY(Gy);
+
     convolution(channel, 3, Gx, gradX);
     convolution(channel, 3, Gy, gradY);
 
     // Gradient Magnitude
-
     for (i = 0; i < N; i++)
     {
         for (j = 0; j < M; j++)
@@ -226,48 +209,47 @@ double **sobel(int **channel)
         }
     }
 
+    // Normalize gradient magnitude (0 - 255)
     normCoeff = 255 / maxG;
     for (i = 0; i < N; i++)
     {
         for (j = 0; j < M; j++)
         {
-            // output[i][j] = (int)fmin(output[i][j] * normCoeff, 255);
             output[i][j] = (output[i][j] * normCoeff > 255) ? 255 : (int)(output[i][j] * normCoeff);
         }
     }
 
+    // Gradient Direction
     for (i = N; i < 2 * N; i++)
     {
         for (j = 0; j < M; j++)
         {
-            output[i][j] = (atan2(gradY[i - N][j], gradX[i - N][j]) * 180 / 3.14159265359) + 180;
+            output[i][j] = atan2(gradY[i - N][j], gradX[i - N][j]) * 180 / 3.14159265359;
         }
     }
 
-    for (i = 0; i < 3; i++)
-    {
-        free(Gx[i]);
-        free(Gy[i]);
-    }
-    free(Gx);
-    free(Gy);
-    free2DArray(gradX, N, M);
-    free2DArray(gradY, N, M);
+    freeDouble2DArray(Gx, 3, 3);
+    freeDouble2DArray(Gy, 3, 3);
+    freeInt2DArray(gradX, N, M);
+    freeInt2DArray(gradY, N, M);
 
     return output;
 }
 
-int **nms(int **gradMag, double **gradDir)
+int **nms(int **gradMag, int **gradDir)
 {
-    int **output = allocate2DArray(N, M);
-    int beforePixel, afterPixel;
-    double dir;
+    int **output = allocate2DIntArray(N, M);
+    int dir, beforePixel, afterPixel;
     int PI = 180;
+
+    // Ignore the border pixels
     for (i = 1; i < N - 1; i++)
     {
         for (j = 1; j < M - 1; j++)
         {
             dir = gradDir[i][j];
+
+            // ################## REVIEW THE CONDITIONS #########################
 
             if (((0 <= dir) || (dir < PI / 8)) || ((15 * PI / 8 <= dir) || (dir <= 2 * PI)))
             {
@@ -306,9 +288,9 @@ int **nms(int **gradMag, double **gradDir)
 
 int **thresholding(int **channel, int low, int high, int weak)
 {
-    int **output = allocate2DArray(N, M);
-
+    int **output = allocate2DIntArray(N, M);
     int strong = 255;
+
     for (i = 0; i < N; i++)
     {
         for (j = 0; j < M; j++)
@@ -333,18 +315,18 @@ int **thresholding(int **channel, int low, int high, int weak)
 
 int **hysteresis(int **channel, int weak)
 {
-    int **output = allocate2DArray(N, M);
-    int **topToBottom = allocate2DArray(N, M);
-    int **bottomToTop = allocate2DArray(N, M);
-    int **rightToLeft = allocate2DArray(N, M);
-    int **leftToRight = allocate2DArray(N, M);
+    int **output = allocate2DIntArray(N, M);
+    int **topToBottom = allocate2DIntArray(N, M);
+    int **bottomToTop = allocate2DIntArray(N, M);
+    int **rightToLeft = allocate2DIntArray(N, M);
+    int **leftToRight = allocate2DIntArray(N, M);
     // int topToBottom[N][M], bottomToTop[N][M], rightToLeft[N][M], leftToRight[N][M];
     int fp = -1;
 
-    copyArray(channel, topToBottom, N, M);
-    copyArray(channel, bottomToTop, N, M);
-    copyArray(channel, rightToLeft, N, M);
-    copyArray(channel, leftToRight, N, M);
+    copyFromDynamicToDynamic(channel, topToBottom, N, M);
+    copyFromDynamicToDynamic(channel, bottomToTop, N, M);
+    copyFromDynamicToDynamic(channel, rightToLeft, N, M);
+    copyFromDynamicToDynamic(channel, leftToRight, N, M);
 
     for (i = 1; i < N - 1; i++)
     {
@@ -449,10 +431,10 @@ int **hysteresis(int **channel, int weak)
         }
     }
 
-    free2DArray(topToBottom, N, M);
-    free2DArray(bottomToTop, N, M);
-    free2DArray(rightToLeft, N, M);
-    free2DArray(leftToRight, N, M);
+    freeInt2DArray(topToBottom, N, M);
+    freeInt2DArray(bottomToTop, N, M);
+    freeInt2DArray(rightToLeft, N, M);
+    freeInt2DArray(leftToRight, N, M);
 
     return output;
 }
@@ -460,7 +442,6 @@ int **hysteresis(int **channel, int weak)
 double **gaussianKernel(int size, int sigma)
 {
     double **kernel = malloc(sizeof(double *) * size);
-    int i, j;
     int x, y;
     int center = size / 2;
     double res = 0.0f;
@@ -479,7 +460,8 @@ double **gaussianKernel(int size, int sigma)
         }
     }
 
-    for (i = 0; i < size; i++) // checking purpose
+    // Normalize the kernel
+    for (i = 0; i < size; i++)
     {
         for (j = 0; j < size; j++)
         {
@@ -516,17 +498,6 @@ void sobelKernelY(double **kernel)
     kernel[2][2] = 1;
 }
 
-void copyArray(int **source, int **destination, int rows, int cols)
-{
-    for (i = 0; i < rows; i++)
-    {
-        for (j = 0; j < cols; j++)
-        {
-            destination[i][j] = source[i][j];
-        }
-    }
-}
-
 void convolution(int **image, int kernelSize, double **kernel, int **output)
 {
     int i, j, ki, kj;
@@ -559,7 +530,7 @@ void convolution(int **image, int kernelSize, double **kernel, int **output)
     // return output;
 }
 
-int **allocate2DArray(int rows, int cols)
+int **allocate2DIntArray(int rows, int cols)
 {
     int i, j;
     // Allocate memory for the row pointers
@@ -590,7 +561,7 @@ int **allocate2DArray(int rows, int cols)
     return array;
 }
 
-double **allocate2DArrayDouble(int rows, int cols)
+double **allocate2DDoubleArray(int rows, int cols)
 {
     int i, j;
     // Allocate memory for the row pointers
@@ -621,6 +592,37 @@ double **allocate2DArrayDouble(int rows, int cols)
     return array;
 }
 
+void freeInt2DArray(int **array, int rows, int cols)
+{
+    int i, j;
+    for (i = 0; i < rows; i++)
+    {
+        free(array[i]);
+    }
+    free(array);
+}
+
+void freeDouble2DArray(double **array, int rows, int cols)
+{
+    int i, j;
+    for (i = 0; i < rows; i++)
+    {
+        free(array[i]);
+    }
+    free(array);
+}
+
+void copyFromDynamicToDynamic(int **source, int **destination, int rows, int cols)
+{
+    for (i = 0; i < rows; i++)
+    {
+        for (j = 0; j < cols; j++)
+        {
+            destination[i][j] = source[i][j];
+        }
+    }
+}
+
 void copyFromDynamicToStatic(int **source, int destination[N][M], int rows, int cols)
 {
     int i, j;
@@ -643,24 +645,4 @@ void copyFromStaticToDynamic(int source[N][M], int **destination, int rows, int 
             destination[i][j] = source[i][j];
         }
     }
-}
-
-void free2DArray(int **array, int rows, int cols)
-{
-    int i, j;
-    for (i = 0; i < rows; i++)
-    {
-        free(array[i]);
-    }
-    free(array);
-}
-
-void free2DArrayDouble(double **array, int rows, int cols)
-{
-    int i, j;
-    for (i = 0; i < rows; i++)
-    {
-        free(array[i]);
-    }
-    free(array);
 }
