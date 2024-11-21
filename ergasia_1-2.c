@@ -27,7 +27,8 @@ int current_u[N][M];
 int current_v[N][M];
 #pragma arm section
 
-int i, j;
+int i, j, ii, jj;
+int TILE_SIZE = 100;
 
 /* FUNCTIONS */
 void readImage(void);
@@ -80,12 +81,18 @@ int main()
 
     /* 2. SOBEL MASK */
     sobelImage = sobel(blurredImage);
-    for (i = 0; i < N; i++)
+    for (i = 0; i < N; i += TILE_SIZE)
     {
-        for (j = 0; j < M; j++)
+        for (j = 0; j < M; j += TILE_SIZE)
         {
-            gradMag[i][j] = sobelImage[i][j];
-            gradDir[i][j] = sobelImage[i + N][j];
+            for (ii = i; ii < i + TILE_SIZE; ii++)
+            {
+                for (jj = j; jj < j + TILE_SIZE; jj++)
+                {
+                    gradMag[ii][jj] = sobelImage[ii][jj];
+                    gradDir[ii][jj] = sobelImage[ii + N][jj];
+                }
+            }
         }
     }
     // copyFromDynamicToStatic(gradMag, current_y, N, M);      // Get the gradient magnitude image
@@ -189,42 +196,67 @@ int **sobel(int **channel)
     convolution(channel, 3, Gy, gradY);
 
     // Gradient Magnitude
+    for (i = 0; i < N; i += TILE_SIZE)
+    {
+        for (j = 0; j < M; j += TILE_SIZE)
+        {
+            for (ii = i; ii < i + TILE_SIZE; ii++)
+            {
+                for (jj = j; jj < j + TILE_SIZE; jj++)
+                {
+                    G = sqrt(gradX[ii][jj] * gradX[ii][jj] + gradY[ii][jj] * gradY[ii][jj]);
+                    output[ii][jj] = G;
+                }
+            }
+        }
+    }
+
     for (i = 0; i < N; i++)
     {
         for (j = 0; j < M; j++)
         {
-            G = sqrt(gradX[i][j] * gradX[i][j] + gradY[i][j] * gradY[i][j]);
-            if (G > maxG)
+            if (output[i][j] > maxG)
             {
-                maxG = G;
+                maxG = output[i][j];
             }
-
-            output[i][j] = G;
         }
     }
 
     // Normalize gradient magnitude (0 - 255)
     normCoeff = 255 / maxG;
-    for (i = 0; i < N; i++)
+    for (i = 0; i < N; i += TILE_SIZE)
     {
-        for (j = 0; j < M; j += 4)
+        for (j = 0; j < M; j += TILE_SIZE)
         {
-            output[i][j] = (output[i][j] * normCoeff > 255) ? 255 : (int)(output[i][j] * normCoeff);
-            output[i][j + 1] = (output[i][j + 1] * normCoeff > 255) ? 255 : (int)(output[i][j + 1] * normCoeff);
-            output[i][j + 2] = (output[i][j + 2] * normCoeff > 255) ? 255 : (int)(output[i][j + 2] * normCoeff);
-            output[i][j + 3] = (output[i][j + 3] * normCoeff > 255) ? 255 : (int)(output[i][j + 3] * normCoeff);
+            for (ii = i; ii < i + TILE_SIZE; ii++)
+            {
+                for (jj = j; jj < j + TILE_SIZE; jj += 4)
+                {
+                    output[ii][jj + 0] = (output[ii][jj + 0] * normCoeff > 255) ? 255 : (int)(output[ii][jj + 0] * normCoeff);
+                    output[ii][jj + 1] = (output[ii][jj + 1] * normCoeff > 255) ? 255 : (int)(output[ii][jj + 1] * normCoeff);
+                    output[ii][jj + 2] = (output[ii][jj + 2] * normCoeff > 255) ? 255 : (int)(output[ii][jj + 2] * normCoeff);
+                    output[ii][jj + 3] = (output[ii][jj + 3] * normCoeff > 255) ? 255 : (int)(output[ii][jj + 3] * normCoeff);
+                }
+            }
         }
     }
 
     // Gradient Direction
-    for (i = N; i < 2 * N; i++)
+    for (i = N; i < 2 * N; i += TILE_SIZE)
     {
-        for (j = 0; j < M; j += 4)
+        for (j = 0; j < M; j += TILE_SIZE)
         {
-            output[i][j] = atan2(gradY[i - N][j], gradX[i - N][j]) * 180 / _PI;
-            output[i][j + 1] = atan2(gradY[i - N][j + 1], gradX[i - N][j + 1]) * 180 / _PI;
-            output[i][j + 2] = atan2(gradY[i - N][j + 2], gradX[i - N][j + 2]) * 180 / _PI;
-            output[i][j + 3] = atan2(gradY[i - N][j + 3], gradX[i - N][j + 3]) * 180 / _PI;
+            for (ii = i; ii < i + TILE_SIZE; ii++)
+            {
+                for (jj = j; jj < j + TILE_SIZE; jj += 4)
+                {
+
+                    output[i][j + 0] = atan2(gradY[i - N][j + 0], gradX[i - N][j + 0]) * 180 / _PI;
+                    output[i][j + 1] = atan2(gradY[i - N][j + 1], gradX[i - N][j + 1]) * 180 / _PI;
+                    output[i][j + 2] = atan2(gradY[i - N][j + 2], gradX[i - N][j + 2]) * 180 / _PI;
+                    output[i][j + 3] = atan2(gradY[i - N][j + 3], gradX[i - N][j + 3]) * 180 / _PI;
+                }
+            }
         }
     }
 
@@ -296,10 +328,23 @@ int **thresholding(int **channel, int low, int high, int weak)
     {
         for (j = 0; j < M; j += 4)
         {
-            thresholdCheck(&channel[i][j], &output[i][j], low, high, weak, strong);
-            thresholdCheck(&channel[i][j + 1], &output[i][j + 1], low, high, weak, strong);
-            thresholdCheck(&channel[i][j + 2], &output[i][j + 2], low, high, weak, strong);
-            thresholdCheck(&channel[i][j + 3], &output[i][j + 3], low, high, weak, strong);
+        }
+    }
+
+    for (i = 0; i < N; i += TILE_SIZE)
+    {
+        for (j = 0; j < M; j += TILE_SIZE)
+        {
+            for (ii = i; ii < i + TILE_SIZE; ii++)
+            {
+                for (jj = j; jj < j + TILE_SIZE; jj += 4)
+                {
+                    thresholdCheck(&channel[ii][jj + 0], &output[ii][jj + 0], low, high, weak, strong);
+                    thresholdCheck(&channel[ii][jj + 1], &output[ii][jj + 1], low, high, weak, strong);
+                    thresholdCheck(&channel[ii][jj + 2], &output[ii][jj + 2], low, high, weak, strong);
+                    thresholdCheck(&channel[ii][jj + 3], &output[ii][jj + 3], low, high, weak, strong);
+                }
+            }
         }
     }
 
@@ -432,6 +477,7 @@ int **hysteresis(int **channel, int weak)
     return output;
 }
 
+// TODO: Calculate only 1/4 of the kernel, due to symmetry
 double **gaussianKernel(int size, int sigma)
 {
     double **kernel = malloc(sizeof(double *) * size);
@@ -497,11 +543,8 @@ void convolution(int **image, int kernelSize, double **kernel, int **output)
     int kernelCenter = kernelSize / 2;
     int sum0 = 0, sum1 = 0, sum2 = 0, sum3 = 0;
 
-    // int **output = malloc(N * sizeof(int *));
-
     for (i = 0; i < N; i++)
     {
-        // output[i] = malloc(M * sizeof(int));
         for (j = 0; j < M; j += 4)
         {
             sum0 = sum1 = sum2 = sum3 = 0;
