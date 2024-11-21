@@ -202,10 +202,12 @@ int **sobel(int **channel)
         {
             for (ii = i; ii < i + TILE_SIZE; ii++)
             {
-                for (jj = j; jj < j + TILE_SIZE; jj++)
+                for (jj = j; jj < j + TILE_SIZE; jj += 4)
                 {
-                    G = sqrt(gradX[ii][jj] * gradX[ii][jj] + gradY[ii][jj] * gradY[ii][jj]);
-                    output[ii][jj] = G;
+                    output[ii][jj + 0] = sqrt(gradX[ii][jj + 0] * gradX[ii][jj + 0] + gradY[ii][jj + 0] * gradY[ii][jj + 0]);
+                    output[ii][jj + 1] = sqrt(gradX[ii][jj + 1] * gradX[ii][jj + 1] + gradY[ii][jj + 1] * gradY[ii][jj + 1]);
+                    output[ii][jj + 2] = sqrt(gradX[ii][jj + 2] * gradX[ii][jj + 2] + gradY[ii][jj + 2] * gradY[ii][jj + 2]);
+                    output[ii][jj + 3] = sqrt(gradX[ii][jj + 3] * gradX[ii][jj + 3] + gradY[ii][jj + 3] * gradY[ii][jj + 3]);
                 }
             }
         }
