@@ -42,9 +42,12 @@ int **thresholding(int **channel, int low, int high, int weak);
 int **hysteresis(int **channel, int weak);
 
 double **gaussianKernel(int size, int sigma);
+double *gaussianKernel1D(int size, int sigma);
 void sobelKernelX(double **kernel);
 void sobelKernelY(double **kernel);
 void convolution(int **image, int kernelSize, double **kernel, int **output);
+void convolutionHorizontal1D(int **image, int kernelSize, double *kernel, int **output);
+void convolutionVertical1D(int **image, int kernelSize, double *kernel, int **output);
 
 /* Array Memory Management */
 int **allocate2DIntArray(int rows, int cols);
@@ -168,18 +171,24 @@ void writeImage(char *name)
 
 void gaussianBlur(int **channel, int kernelSize, int kernelSigma, int **output)
 {
+    int **gaussX = allocate2DIntArray(N, M);
     // Generate the Gaussian kernel for size and sigma
-    double **kernel = gaussianKernel(kernelSize, kernelSigma);
+    // double **kernel = gaussianKernel(kernelSize, kernelSigma);
+    double *kernelXY = gaussianKernel1D(kernelSize, kernelSigma);
 
-    convolution(channel, kernelSize, kernel, output);
+    convolutionHorizontal1D(channel, kernelSize, kernelXY, gaussX);
+    convolutionVertical1D(gaussX, kernelSize, kernelXY, output);
 
-    freeDouble2DArray(kernel, kernelSize, kernelSize);
+    // convolution(channel, kernelSize, kernel, output);
+
+    // freeDouble2DArray(kernel, kernelSize, kernelSize);
+    free(kernelXY);
+    freeInt2DArray(gaussX, N, M);
 }
 
 int **sobel(int **channel)
 {
     double maxG = 0.0f; // Maximum gradient magnitude value, used for normalization
-    double G = 0.0f;    // Gradient Magnitude
     double normCoeff = 0.0f;
 
     // Allocate memory for the output, the Sobel kernels and the directional gradients
@@ -513,6 +522,31 @@ double **gaussianKernel(int size, int sigma)
     return kernel;
 }
 
+double *gaussianKernel1D(int size, int sigma)
+{
+    double *kernel = malloc(sizeof(double *) * size);
+    int x;
+    int center = size / 2;
+    double res = 0.0f;
+    double sum = 0.0f;
+
+    for (i = 0; i < size; i++) // checking purpose
+    {
+        x = i - center;
+        res = exp(-((double)(x * x) / (2 * sigma * sigma)));
+        sum += res;
+        kernel[i] = res;
+    }
+
+    // Normalize the kernel
+    for (i = 0; i < size; i++)
+    {
+        kernel[i] = kernel[i] / sum;
+    }
+
+    return kernel;
+}
+
 void sobelKernelX(double **kernel)
 {
     kernel[0][0] = -1;
@@ -581,6 +615,52 @@ void convolution(int **image, int kernelSize, double **kernel, int **output)
     }
 
     // return output;
+}
+
+void convolutionHorizontal1D(int **image, int kernelSize, double *kernel, int **output)
+{
+    int kCenter = kernelSize / 2;
+    int sum = 0;
+
+    for (int i = 0; i < N; i++)
+    {
+        for (int j = 0; j < M; j++)
+        {
+            sum = 0;
+            // Apply the kernel horizontally
+            for (int ki = -kCenter; ki <= kCenter; ki++)
+            {
+                if (j + ki >= 0 && j + ki < N)
+                { // Boundary checki
+                    sum += image[i][j + ki] * kernel[ki + kCenter];
+                }
+            }
+            output[i][j] = sum;
+        }
+    }
+}
+
+void convolutionVertical1D(int **image, int kernelSize, double *kernel, int **output)
+{
+    int kCenter = kernelSize / 2;
+    int sum = 0;
+
+    for (int i = 0; i < N; i++)
+    {
+        for (int j = 0; j < M; j++)
+        {
+            sum = 0;
+            // Apply the kernel horizontally
+            for (int ki = -kCenter; ki <= kCenter; ki++)
+            {
+                if (i + ki >= 0 && i + ki < M)
+                {
+                    sum += image[i + ki][j] * kernel[ki + kCenter];
+                }
+            }
+            output[i][j] = sum;
+        }
+    }
 }
 
 int **allocate2DIntArray(int rows, int cols)
