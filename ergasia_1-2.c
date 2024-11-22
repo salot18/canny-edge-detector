@@ -4,9 +4,9 @@
 #include <stdlib.h>
 
 /* CAR IMAGE */
-#define N 278 // Image height (rows)
-#define M 420 // Image width (cols)
-#define filename "car_420x278_444.yuv"
+// #define N 278 // Image height (rows)
+// #define M 420 // Image width (cols)
+// #define filename "car_420x278_444.yuv"
 
 /* CAT IMAGES */
 // #define N 332
@@ -14,9 +14,9 @@
 // #define filename "cat_498x332_444.yuv"
 
 // SUNFLOWER
-// #define N 200 // height
-// #define M 200 // width
-// #define filename "sunflower_200x200_444.yuv"
+#define N 200 // height
+#define M 200 // width
+#define filename "sunflower_200x200_444.yuv"
 
 /* code for armulator*/
 #pragma arm section zidata = "ram"
@@ -76,9 +76,9 @@ int main()
 
     /* 2. SOBEL MASK */
     sobelImage = sobel(blurredImage);
-    for (i = 0; i < N; i++)
+    for (j = 0; j < M; j++)
     {
-        for (j = 0; j < M; j++)
+        for (i = 0; i < N; i++)
         {
             gradMag[i][j] = sobelImage[i][j];
             gradDir[i][j] = sobelImage[i + N][j];
@@ -195,9 +195,9 @@ int **sobel(int **channel)
     convolution(channel, 3, Gy, gradY);
 
     // Gradient Magnitude
-    for (i = 0; i < N; i++)
+    for (j = 0; j < M; j++)
     {
-        for (j = 0; j < M; j++)
+        for (i = 0; i < N; i++)
         {
             G = sqrt(gradX[i][j] * gradX[i][j] + gradY[i][j] * gradY[i][j]);
             if (G > maxG)
@@ -211,18 +211,18 @@ int **sobel(int **channel)
 
     // Normalize gradient magnitude (0 - 255)
     normCoeff = 255 / maxG;
-    for (i = 0; i < N; i++)
+    for (j = 0; j < M; j++)
     {
-        for (j = 0; j < M; j++)
+        for (i = 0; i < N; i++)
         {
             output[i][j] = (output[i][j] * normCoeff > 255) ? 255 : (int)(output[i][j] * normCoeff);
         }
     }
 
     // Gradient Direction
-    for (i = N; i < 2 * N; i++)
+    for (j = 0; j < M; j++)
     {
-        for (j = 0; j < M; j++)
+        for (i = N; i < 2 * N; i++)
         {
             output[i][j] = atan2(gradY[i - N][j], gradX[i - N][j]) * 180 / 3.14159265359;
         }
@@ -243,9 +243,9 @@ int **nms(int **gradMag, int **gradDir)
     int PI = 180;
 
     // Ignore the border pixels
-    for (i = 1; i < N - 1; i++)
+    for (j = 1; j < M - 1; j++)
     {
-        for (j = 1; j < M - 1; j++)
+        for (i = 1; i < N - 1; i++)
         {
             dir = gradDir[i][j];
 
@@ -291,9 +291,9 @@ int **thresholding(int **channel, int low, int high, int weak)
     int **output = allocate2DIntArray(N, M);
     int strong = 255;
 
-    for (i = 0; i < N; i++)
+    for (j = 0; j < M; j++)
     {
-        for (j = 0; j < M; j++)
+        for (i = 0; i < N; i++)
         {
             if (channel[i][j] >= high)
             {
@@ -328,9 +328,9 @@ int **hysteresis(int **channel, int weak)
     copyFromDynamicToDynamic(channel, rightToLeft, N, M);
     copyFromDynamicToDynamic(channel, leftToRight, N, M);
 
-    for (i = 1; i < N - 1; i++)
+    for (j = 1; j < M - 1; j++)
     {
-        for (j = 1; j < M - 1; j++)
+        for (i = 1; i < N - 1; i++)
         {
             if (topToBottom[i][j] == weak)
             {
@@ -349,9 +349,9 @@ int **hysteresis(int **channel, int weak)
         }
     }
 
-    for (i = 1; i < N - 1; i++)
+    for (j = 1; j < M - 1; j++)
     {
-        for (j = 1; j < M - 1; j++)
+        for (i = 1; i < N - 1; i++)
         {
             if (bottomToTop[i][j] == weak)
             {
@@ -371,9 +371,9 @@ int **hysteresis(int **channel, int weak)
         }
     }
 
-    for (i = 1; i < N - 1; i++)
+    for (j = 1; j < M - 1; j++)
     {
-        for (j = 1; j < M - 1; j++)
+        for (i = 1; i < N - 1; i++)
         {
             if (rightToLeft[i][j] == weak)
             {
@@ -394,9 +394,9 @@ int **hysteresis(int **channel, int weak)
         }
     }
 
-    for (i = 1; i < N - 1; i++)
+    for (j = 1; j < M - 1; j++)
     {
-        for (j = 1; j < M - 1; j++)
+        for (i = 1; i < N - 1; i++)
         {
             if (leftToRight[i][j] == weak)
             {
@@ -417,9 +417,9 @@ int **hysteresis(int **channel, int weak)
         }
     }
 
-    for (i = 0; i < N; i++)
+    for (j = 0; j < M; j++)
     {
-        for (j = 0; j < M; j++)
+        for (i = 0; i < N; i++)
         {
             fp = topToBottom[i][j] + bottomToTop[i][j] + rightToLeft[i][j] + leftToRight[i][j];
             if (fp > 255)
@@ -461,9 +461,9 @@ double **gaussianKernel(int size, int sigma)
     }
 
     // Normalize the kernel
-    for (i = 0; i < size; i++)
+    for (j = 0; j < size; j++)
     {
-        for (j = 0; j < size; j++)
+        for (i = 0; i < size; i++)
         {
             kernel[i][j] = kernel[i][j] / sum;
         }
@@ -506,15 +506,15 @@ void convolution(int **image, int kernelSize, double **kernel, int **output)
 
     // int **output = malloc(N * sizeof(int *));
 
-    for (i = 0; i < N; i++)
+    for (j = 0; j < M; j++)
     {
+        for (i = 0; i < N; i++)
         // output[i] = malloc(M * sizeof(int));
-        for (j = 0; j < M; j++)
         {
             sum = 0;
-            for (ki = -kernelCenter; ki <= kernelCenter; ki++)
+            for (kj = -kernelCenter; kj <= kernelCenter; kj++)
             {
-                for (kj = -kernelCenter; kj <= kernelCenter; kj++)
+                for (ki = -kernelCenter; ki <= kernelCenter; ki++)
                 {
                     if (i + ki >= 0 && i + ki < N && j + kj >= 0 && j + kj < M)
                     {
@@ -614,9 +614,9 @@ void freeDouble2DArray(double **array, int rows, int cols)
 
 void copyFromDynamicToDynamic(int **source, int **destination, int rows, int cols)
 {
-    for (i = 0; i < rows; i++)
+    for (j = 0; j < cols; j++)
     {
-        for (j = 0; j < cols; j++)
+        for (i = 0; i < rows; i++)
         {
             destination[i][j] = source[i][j];
         }
@@ -626,9 +626,9 @@ void copyFromDynamicToDynamic(int **source, int **destination, int rows, int col
 void copyFromDynamicToStatic(int **source, int destination[N][M], int rows, int cols)
 {
     int i, j;
-    for (i = 0; i < rows; i++)
+    for (j = 0; j < cols; j++)
     {
-        for (j = 0; j < cols; j++)
+        for (i = 0; i < rows; i++)
         {
             destination[i][j] = source[i][j];
         }
@@ -638,9 +638,9 @@ void copyFromDynamicToStatic(int **source, int destination[N][M], int rows, int 
 void copyFromStaticToDynamic(int source[N][M], int **destination, int rows, int cols)
 {
     int i, j;
-    for (i = 0; i < rows; i++)
+    for (j = 0; j < cols; j++)
     {
-        for (j = 0; j < cols; j++)
+        for (i = 0; i < rows; i++)
         {
             destination[i][j] = source[i][j];
         }
