@@ -126,15 +126,13 @@ void readImage(void)
         exit(-1);
     }
 
-    for (i = 0; i < N; i++)
+    int *ptrCurrentY = &current_y[0][0];
+    for (i = 0; i < N * M; i += 4)
     {
-        for (j = 0; j < M; j += 4)
-        {
-            current_y[i][j] = fgetc(frame_c);
-            current_y[i][j + 1] = fgetc(frame_c);
-            current_y[i][j + 2] = fgetc(frame_c);
-            current_y[i][j + 3] = fgetc(frame_c);
-        }
+        *(ptrCurrentY + i + 0) = fgetc(frame_c);
+        *(ptrCurrentY + i + 1) = fgetc(frame_c);
+        *(ptrCurrentY + i + 2) = fgetc(frame_c);
+        *(ptrCurrentY + i + 3) = fgetc(frame_c);
     }
 
     fclose(frame_c);
@@ -145,15 +143,13 @@ void writeImage(char *name)
     FILE *frame_yuv;
     frame_yuv = fopen(name, "wb");
 
-    for (i = 0; i < N; i++)
+    int *ptrCurrentY = &current_y[0][0];
+    for (i = 0; i < N * M; i += 4)
     {
-        for (j = 0; j < M; j += 4)
-        {
-            fputc(current_y[i][j], frame_yuv);
-            fputc(current_y[i][j + 1], frame_yuv);
-            fputc(current_y[i][j + 2], frame_yuv);
-            fputc(current_y[i][j + 3], frame_yuv);
-        }
+        fputc(*(ptrCurrentY + i + 0), frame_yuv);
+        fputc(*(ptrCurrentY + i + 1), frame_yuv);
+        fputc(*(ptrCurrentY + i + 2), frame_yuv);
+        fputc(*(ptrCurrentY + i + 3), frame_yuv);
     }
 
     fclose(frame_yuv);
@@ -215,6 +211,15 @@ int **sobel(int **channel)
             output[i][j + 3] = (output[i][j + 3] * normCoeff > 255) ? 255 : (int)(output[i][j + 3] * normCoeff);
         }
     }
+
+    // int *ptrOutput = &output[0][0];
+    // for (i = 0; i < N * M; i += 4)
+    // {
+    //     *(ptrOutput + i + 0) = (*(ptrOutput + i + 0) * normCoeff > 255) ? 255 : (int)(*(ptrOutput + i + 0) * normCoeff);
+    //     *(ptrOutput + i + 1) = (*(ptrOutput + i + 1) * normCoeff > 255) ? 255 : (int)(*(ptrOutput + i + 1) * normCoeff);
+    //     *(ptrOutput + i + 2) = (*(ptrOutput + i + 2) * normCoeff > 255) ? 255 : (int)(*(ptrOutput + i + 2) * normCoeff);
+    //     *(ptrOutput + i + 3) = (*(ptrOutput + i + 3) * normCoeff > 255) ? 255 : (int)(*(ptrOutput + i + 3) * normCoeff);
+    // }
 
     // Gradient Direction
     for (i = N; i < 2 * N; i++)
@@ -302,6 +307,16 @@ int **thresholding(int **channel, int low, int high, int weak)
             thresholdCheck(&channel[i][j + 3], &output[i][j + 3], low, high, weak, strong);
         }
     }
+
+    // int *ptrChannel = &channel[0][0];
+    // int *ptrOutput = &output[0][0];
+    // for (i = 0; i < N * M; i += 4)
+    // {
+    //     thresholdCheck((ptrChannel + i + 0), (ptrOutput + i + 0), low, high, weak, strong);
+    //     thresholdCheck((ptrChannel + i + 1), (ptrOutput + i + 1), low, high, weak, strong);
+    //     thresholdCheck((ptrChannel + i + 2), (ptrOutput + i + 2), low, high, weak, strong);
+    //     thresholdCheck((ptrChannel + i + 3), (ptrOutput + i + 3), low, high, weak, strong);
+    // }
 
     return output;
 }
@@ -454,13 +469,19 @@ double **gaussianKernel(int size, int sigma)
     }
 
     // Normalize the kernel
-    for (i = 0; i < size; i++)
-    {
-        for (j = 0; j < size; j++)
-        {
-            kernel[i][j] = kernel[i][j] / sum;
-        }
-    }
+    // for (i = 0; i < size; i++)
+    // {
+    //     for (j = 0; j < size; j++)
+    //     {
+    //         kernel[i][j] = kernel[i][j] / sum;
+    //     }
+    // }
+
+    // double *ptrKernel = &kernel[0][0];
+    // for (i = 0; i < size * size; i++)
+    // {
+    //     *(ptrKernel + i) = *(ptrKernel + i) / sum;
+    // }
 
     return kernel;
 }
@@ -498,6 +519,42 @@ void convolution(int **image, int kernelSize, double **kernel, int **output)
     int sum0 = 0, sum1 = 0, sum2 = 0, sum3 = 0;
 
     // int **output = malloc(N * sizeof(int *));
+
+    // for (i = 0; i < N; i++)
+    // {
+    //     // output[i] = malloc(M * sizeof(int));
+    //     for (j = 0; j < M; j += 4)
+    //     {
+    //         sum0 = sum1 = sum2 = sum3 = 0;
+    //         for (ki = -kernelCenter; ki <= kernelCenter; ki++)
+    //         {
+    //             for (kj = -kernelCenter; kj <= kernelCenter; kj++)
+    //             {
+    //                 if (i + ki >= 0 && i + ki < N && j + kj >= 0 && j + kj < M)
+    //                 {
+    //                     sum0 += image[i + ki][j + kj] * kernel[ki + kernelCenter][kj + kernelCenter];
+    //                 }
+    //                 if (i + ki >= 0 && i + ki < N && j + 1 + kj >= 0 && j + 1 + kj < M)
+    //                 {
+    //                     sum1 += image[i + ki][j + 1 + kj] * kernel[ki + kernelCenter][kj + kernelCenter];
+    //                 }
+    //                 if (i + ki >= 0 && i + ki < N && j + 2 + kj >= 0 && j + 2 + kj < M)
+    //                 {
+    //                     sum2 += image[i + ki][j + 2 + kj] * kernel[ki + kernelCenter][kj + kernelCenter];
+    //                 }
+    //                 if (i + ki >= 0 && i + ki < N && j + 3 + kj >= 0 && j + 3 + kj < M)
+    //                 {
+    //                     sum3 += image[i + ki][j + 3 + kj] * kernel[ki + kernelCenter][kj + kernelCenter];
+    //                 }
+    //             }
+    //         }
+
+    //         output[i][j] = sum0;
+    //         output[i][j + 1] = sum1;
+    //         output[i][j + 2] = sum2;
+    //         output[i][j + 3] = sum3;
+    //     }
+    // }
 
     for (i = 0; i < N; i++)
     {
@@ -634,6 +691,16 @@ void copyFromDynamicToDynamic(int **source, int **destination, int rows, int col
             destination[i][j + 3] = source[i][j + 3];
         }
     }
+
+    // int *ptrDestination = &destination[0][0];
+    // int *ptrSource = &source[0][0];
+    // for (i = 0; i < rows * cols; i = +4)
+    // {
+    //     *(ptrDestination + i + 0) = *(ptrSource + i + 0);
+    //     *(ptrDestination + i + 1) = *(ptrSource + i + 1);
+    //     *(ptrDestination + i + 2) = *(ptrSource + i + 2);
+    //     *(ptrDestination + i + 3) = *(ptrSource + i + 3);
+    // }
 }
 
 void copyFromDynamicToStatic(int **source, int destination[N][M], int rows, int cols)
@@ -662,6 +729,17 @@ void copyFromStaticToDynamic(int source[N][M], int **destination, int rows, int 
             destination[i][j + 3] = source[i][j + 3];
         }
     }
+
+    // int *ptrDestination = &destination[0][0];
+    // int *ptrSource = &source[0][0];
+
+    // for (i = 0; i < rows * cols; i += 4)
+    // {
+    //     *(ptrDestination + i + 0) = *(ptrSource + i + 0);
+    //     *(ptrDestination + i + 1) = *(ptrSource + i + 1);
+    //     *(ptrDestination + i + 2) = *(ptrSource + i + 2);
+    //     *(ptrDestination + i + 3) = *(ptrSource + i + 3);
+    // }
 }
 
 void thresholdCheck(int *channel, int *output, int low, int high, int weak, int strong)
