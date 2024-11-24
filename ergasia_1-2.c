@@ -82,6 +82,8 @@ int main()
     // copyFromDynamicToStatic(blurredImage, current_y, N, M);  // Get the blurred image
     // writeImage("BlurredImage.yuv");                            // and save it
 
+    freeInt2DArray(yChannel, N, M);
+
     /* 2. SOBEL MASK */
     sobelImage = sobel(blurredImage);
     for (i = 0; i < N; i += TILE_SIZE)
@@ -101,27 +103,29 @@ int main()
     // copyFromDynamicToStatic(gradMag, current_y, N, M);      // Get the gradient magnitude image
     // writeImage("GradMagImage.yuv");                           // and save it
 
+    freeInt2DArray(blurredImage, N, M);
+    freeInt2DArray(sobelImage, 2 * N, M);
+
     /* 3. NON-MAXIMUM SUPPRESSION */
     nmsImage = nms(gradMag, gradDir);
     // copyFromDynamicToStatic(nmsImage, current_y, N, M);     // Get the image afte the nms
     // writeImage("NMSImage.yuv");                               // and save it
 
+    freeInt2DArray(gradMag, N, M);
+    freeInt2DArray(gradDir, N, M);
+
     /* 4. HYSTERESIS THRESHOLDING */
     tImage = thresholding(nmsImage, 5, 20, weak); // (image, low, hight, weak)
     // copyFromDynamicToStatic(tImage, current_y, N, M);       // Get the image after thresholding
     // writeImage("ThreshImage.yuv");                            // and save it
+
+    freeInt2DArray(nmsImage, N, M);
+
     hImage = hysteresis(tImage, weak);
+    freeInt2DArray(tImage, N, M);
     copyFromDynamicToStatic(hImage, current_y, N, M); // Get the image after hysteresis (final image)
     writeImage("FinalImage.yuv");                     // and save it
 
-    /* Free memory for all dynamically allocated 2D arrays */
-    freeInt2DArray(yChannel, N, M);
-    freeInt2DArray(blurredImage, N, M);
-    freeInt2DArray(sobelImage, 2 * N, M);
-    freeInt2DArray(gradMag, N, M);
-    freeInt2DArray(gradDir, N, M);
-    freeInt2DArray(nmsImage, N, M);
-    freeInt2DArray(tImage, N, M);
     freeInt2DArray(hImage, N, M);
 
     return 0;
@@ -369,7 +373,6 @@ int **hysteresis(int **channel, int weak)
     int **bottomToTop = allocate2DIntArray(N, M);
     int **rightToLeft = allocate2DIntArray(N, M);
     int **leftToRight = allocate2DIntArray(N, M);
-    // int topToBottom[N][M], bottomToTop[N][M], rightToLeft[N][M], leftToRight[N][M];
     int fp = -1;
 
     copyFromDynamicToDynamic(channel, topToBottom, N, M);
@@ -613,22 +616,21 @@ void convolution(int **image, int kernelSize, double **kernel, int **output)
             output[i][j + 3] = sum3;
         }
     }
-
-    // return output;
 }
 
 void convolutionHorizontal1D(int **image, int kernelSize, double *kernel, int **output)
 {
+    int ki;
     int kCenter = kernelSize / 2;
     int sum = 0;
 
-    for (int i = 0; i < N; i++)
+    for (i = 0; i < N; i++)
     {
-        for (int j = 0; j < M; j++)
+        for (j = 0; j < M; j++)
         {
             sum = 0;
             // Apply the kernel horizontally
-            for (int ki = -kCenter; ki <= kCenter; ki++)
+            for (ki = -kCenter; ki <= kCenter; ki++)
             {
                 if (j + ki >= 0 && j + ki < N)
                 { // Boundary checki
@@ -642,16 +644,17 @@ void convolutionHorizontal1D(int **image, int kernelSize, double *kernel, int **
 
 void convolutionVertical1D(int **image, int kernelSize, double *kernel, int **output)
 {
+    int ki;
     int kCenter = kernelSize / 2;
     int sum = 0;
 
-    for (int i = 0; i < N; i++)
+    for (i = 0; i < N; i++)
     {
-        for (int j = 0; j < M; j++)
+        for (j = 0; j < M; j++)
         {
             sum = 0;
             // Apply the kernel horizontally
-            for (int ki = -kCenter; ki <= kCenter; ki++)
+            for (ki = -kCenter; ki <= kCenter; ki++)
             {
                 if (i + ki >= 0 && i + ki < M)
                 {
