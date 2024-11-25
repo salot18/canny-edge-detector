@@ -119,6 +119,7 @@ int main()
 
 void readImage(void)
 {
+    int *ptrCurrentY = &current_y[0][0];
     FILE *frame_c;
     if ((frame_c = fopen(filename, "rb")) == NULL)
     {
@@ -126,7 +127,6 @@ void readImage(void)
         exit(-1);
     }
 
-    int *ptrCurrentY = &current_y[0][0];
     for (i = 0; i < N * M; i += 4)
     {
         *(ptrCurrentY + i + 0) = fgetc(frame_c);
@@ -140,10 +140,10 @@ void readImage(void)
 
 void writeImage(char *name)
 {
+    int *ptrCurrentY = &current_y[0][0];
     FILE *frame_yuv;
     frame_yuv = fopen(name, "wb");
 
-    int *ptrCurrentY = &current_y[0][0];
     for (i = 0; i < N * M; i += 4)
     {
         fputc(*(ptrCurrentY + i + 0), frame_yuv);
@@ -241,7 +241,6 @@ int **sobel(int **channel)
     return output;
 }
 
-// TODO: Loop carried dependency
 int **nms(int **gradMag, int **gradDir)
 {
     int **output = allocate2DIntArray(N, M);
