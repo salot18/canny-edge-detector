@@ -137,6 +137,7 @@ void sobel(void)
 {
     double maxG = 0.0f; // Maximum gradient magnitude value, used for normalization
     double normCoeff = 0.0f;
+    int *ptrCurrentY = &current_y[0][0];
 
     convolution();
 
@@ -158,14 +159,23 @@ void sobel(void)
         }
     }
 
-    for (i = 0; i < N; i++)
+    for (i = 0; i < N * M; i += 4)
     {
-        for (j = 0; j < M; j++)
+        if (*(ptrCurrentY + i) > maxG)
         {
-            if (current_y[i][j] > maxG)
-            {
-                maxG = current_y[i][j];
-            }
+            maxG = *(ptrCurrentY + i);
+        }
+        if (*(ptrCurrentY + i + 1) > maxG)
+        {
+            maxG = *(ptrCurrentY + i + 1);
+        }
+        if (*(ptrCurrentY + i + 2) > maxG)
+        {
+            maxG = *(ptrCurrentY + i + 2);
+        }
+        if (*(ptrCurrentY + i + 3) > maxG)
+        {
+            maxG = *(ptrCurrentY + i + 3);
         }
     }
 
@@ -213,13 +223,15 @@ void nms(void)
     int dir, beforePixel, afterPixel;
     int PI = 180;
     int gradMag[N][M];
+    int *ptrCurrentY = &current_y[0][0];
+    int *ptrGradMag = &gradMag[0][0];
 
-    for (i = 0; i < N; i++)
+    for (i = 0; i < N * M; i += 4)
     {
-        for (j = 0; j < M; j++)
-        {
-            gradMag[i][j] = current_y[i][j];
-        }
+        *(ptrGradMag + i + 0) = *(ptrCurrentY + i + 0);
+        *(ptrGradMag + i + 1) = *(ptrCurrentY + i + 1);
+        *(ptrGradMag + i + 2) = *(ptrCurrentY + i + 2);
+        *(ptrGradMag + i + 3) = *(ptrCurrentY + i + 3);
     }
 
     // Ignore the border pixels
@@ -288,17 +300,34 @@ void hysteresis(int weak)
     int bottomToTop[N][M];
     int rightToLeft[N][M];
     int leftToRight[N][M];
+    int *ptrT2B = &topToBottom[0][0];
+    int *ptrB2T = &bottomToTop[0][0];
+    int *ptrL2R = &leftToRight[0][0];
+    int *ptrR2L = &rightToLeft[0][0];
+    int *ptrCurrentY = &current_y[0][0];
     int fp = -1;
 
-    for (i = 0; i < N; i++)
+    for (i = 0; i < N * M; i += 4)
     {
-        for (j = 0; j < M; j++)
-        {
-            topToBottom[i][j] = current_y[i][j];
-            bottomToTop[i][j] = current_y[i][j];
-            rightToLeft[i][j] = current_y[i][j];
-            leftToRight[i][j] = current_y[i][j];
-        }
+        *(ptrT2B + i) = *(ptrCurrentY + i);
+        *(ptrB2T + i) = *(ptrCurrentY + i);
+        *(ptrL2R + i) = *(ptrCurrentY + i);
+        *(ptrR2L + i) = *(ptrCurrentY + i);
+
+        *(ptrT2B + i + 1) = *(ptrCurrentY + i + 1);
+        *(ptrB2T + i + 1) = *(ptrCurrentY + i + 1);
+        *(ptrL2R + i + 1) = *(ptrCurrentY + i + 1);
+        *(ptrR2L + i + 1) = *(ptrCurrentY + i + 1);
+
+        *(ptrT2B + i + 2) = *(ptrCurrentY + i + 2);
+        *(ptrB2T + i + 2) = *(ptrCurrentY + i + 2);
+        *(ptrL2R + i + 2) = *(ptrCurrentY + i + 2);
+        *(ptrR2L + i + 2) = *(ptrCurrentY + i + 2);
+
+        *(ptrT2B + i + 3) = *(ptrCurrentY + i + 3);
+        *(ptrB2T + i + 3) = *(ptrCurrentY + i + 3);
+        *(ptrL2R + i + 3) = *(ptrCurrentY + i + 3);
+        *(ptrR2L + i + 3) = *(ptrCurrentY + i + 3);
     }
 
     for (i = 1; i < N - 1; i++)
@@ -422,9 +451,12 @@ void gaussianKernel1D(int sigma)
     }
 
     // Normalize the kernel
-    for (i = 0; i < KERNEL_SIZE; i++)
+    for (i = 0; i < KERNEL_SIZE; i += 4)
     {
         gaussian_kernel[i] = gaussian_kernel[i] / sum;
+        gaussian_kernel[i + 1] = gaussian_kernel[i + 1] / sum;
+        gaussian_kernel[i + 2] = gaussian_kernel[i + 2] / sum;
+        gaussian_kernel[i + 3] = gaussian_kernel[i + 3] / sum;
     }
 }
 
@@ -513,6 +545,8 @@ void convolutionHorizontal1D(void)
     int kCenter = KERNEL_SIZE / 2;
     int sum = 0;
     int output[N][M];
+    int *ptrCurrentY = &current_y[0][0];
+    int *ptrOutput = &output[0][0];
 
     for (i = 0; i < N; i++)
     {
@@ -531,12 +565,12 @@ void convolutionHorizontal1D(void)
         }
     }
 
-    for (i = 0; i < N; i++)
+    for (i = 0; i < N * M; i += 4)
     {
-        for (j = 0; j < M; j++)
-        {
-            current_y[i][j] = output[i][j];
-        }
+        *(ptrCurrentY + i) = *(ptrOutput + i);
+        *(ptrCurrentY + i + 1) = *(ptrOutput + i + 1);
+        *(ptrCurrentY + i + 2) = *(ptrOutput + i + 2);
+        *(ptrCurrentY + i + 3) = *(ptrOutput + i + 3);
     }
 }
 
@@ -546,6 +580,8 @@ void convolutionVertical1D(void)
     int kCenter = KERNEL_SIZE / 2;
     int sum = 0;
     int output[N][M];
+    int *ptrCurrentY = &current_y[0][0];
+    int *ptrOutput = &output[0][0];
 
     for (i = 0; i < N; i++)
     {
@@ -564,12 +600,12 @@ void convolutionVertical1D(void)
         }
     }
 
-    for (i = 0; i < N; i++)
+    for (i = 0; i < N * M; i += 4)
     {
-        for (j = 0; j < M; j++)
-        {
-            current_y[i][j] = output[i][j];
-        }
+        *(ptrCurrentY + i) = *(ptrOutput + i);
+        *(ptrCurrentY + i + 1) = *(ptrOutput + i + 1);
+        *(ptrCurrentY + i + 2) = *(ptrOutput + i + 2);
+        *(ptrCurrentY + i + 3) = *(ptrOutput + i + 3);
     }
 }
 
