@@ -3,130 +3,82 @@
 #include <string.h>
 #include <stdlib.h>
 
-/* CAR IMAGE */
-// #define N 278 // Image height (rows)
-// #define M 420 // Image width (cols)
-// #define filename "car_420x278_444.yuv"
-
-/* CAT IMAGES */
-// #define N 332
-// #define M 498
-// #define filename "cat_498x332_444.yuv"
-
 // SUNFLOWER
 #define N 200 // height
 #define M 200 // width
 #define filename "sunflower_200x200_444.yuv"
 
 #define _PI 3.14159265359
+#define KERNEL_SIZE 7
+#define KERNEL_SOBEL 3
+#define TILE_SIZE 100
 
 /* code for armulator*/
 #pragma arm section zidata = "ram"
 int current_y[N][M];
-int current_u[N][M];
-int current_v[N][M];
 #pragma arm section
 
+double gaussian_kernel[KERNEL_SIZE];
+int gradX[N][M];
+int gradY[N][M];
+int gradDir[N][M];
+
+const int sobel_kernel_x[3][3] = {
+    {-1, 0, 1},
+    {-2, 0, 2},
+    {-1, 0, 1},
+};
+
+const int sobel_kernel_y[3][3] = {
+    {-1, -2, -1},
+    {0, 0, 0},
+    {1, 2, 1},
+};
+
 int i, j, ii, jj;
-int TILE_SIZE = 100;
 
 /* FUNCTIONS */
 void readImage(void);
 void writeImage(char *name);
 
 /* Canny Algorithm */
-void gaussianBlur(int **channel, int size, int sigma, int **output);
-int **sobel(int **channel);
-int **nms(int **gradMag, int **gradDir);
-int **thresholding(int **channel, int low, int high, int weak);
-int **hysteresis(int **channel, int weak);
+void gaussianBlur(int kernelSize, int kernelSigma);
+void sobel(void);
+void nms(void);
+void thresholding(int low, int high, int weak);
+void hysteresis(int weak);
 
-double **gaussianKernel(int size, int sigma);
-double *gaussianKernel1D(int size, int sigma);
-void sobelKernelX(double **kernel);
-void sobelKernelY(double **kernel);
-void convolution(int **image, int kernelSize, double **kernel, int **output);
-void convolutionHorizontal1D(int **image, int kernelSize, double *kernel, int **output);
-void convolutionVertical1D(int **image, int kernelSize, double *kernel, int **output);
+void gaussianKernel1D(int sigma);
+void convolution(void);
+void convolutionHorizontal1D(void);
+void convolutionVertical1D(void);
 
-/* Array Memory Management */
-int **allocate2DIntArray(int rows, int cols);
-double **allocate2DDoubleArray(int rows, int cols);
-void freeInt2DArray(int **array, int rows, int cols);
-void freeDouble2DArray(double **array, int rows, int cols);
-
-void copyFromDynamicToDynamic(int **source, int **destination, int rows, int cols);
-void copyFromDynamicToStatic(int **source, int destination[N][M], int rows, int cols);
-void copyFromStaticToDynamic(int source[N][M], int **destination, int rows, int cols);
-
-void thresholdCheck(int *channel, int *output, int low, int high, int weak, int strong);
+void thresholdCheck(int *channel, int low, int high, int weak, int strong);
 
 int main()
 {
-    int **yChannel = allocate2DIntArray(N, M);
-    int **blurredImage = allocate2DIntArray(N, M);
-    int **sobelImage;
-    int **gradMag = allocate2DIntArray(N, M);
-    int **gradDir = allocate2DIntArray(N, M);
-    int **nmsImage;
-    int **tImage;
-    int **hImage;
     int weak = 50;
 
     readImage();
 
-    copyFromStaticToDynamic(current_y, yChannel, N, M);
-
     /* 1. GAUSSIAN BLUR */
-    gaussianBlur(yChannel, 7, 1, blurredImage); // (image, kernelSize, kernelSigma, output)
-    // copyFromDynamicToStatic(blurredImage, current_y, N, M);  // Get the blurred image
-    // writeImage("BlurredImage.yuv");                            // and save it
-
-    freeInt2DArray(yChannel, N, M);
+    gaussianBlur(7, 1);
+    // writeImage("BlurredImage.yuv"); // and save it
 
     /* 2. SOBEL MASK */
-    sobelImage = sobel(blurredImage);
-    for (i = 0; i < N; i += TILE_SIZE)
-    {
-        for (j = 0; j < M; j += TILE_SIZE)
-        {
-            for (ii = i; ii < i + TILE_SIZE; ii++)
-            {
-                for (jj = j; jj < j + TILE_SIZE; jj++)
-                {
-                    gradMag[ii][jj] = sobelImage[ii][jj];
-                    gradDir[ii][jj] = sobelImage[ii + N][jj];
-                }
-            }
-        }
-    }
-    // copyFromDynamicToStatic(gradMag, current_y, N, M);      // Get the gradient magnitude image
-    // writeImage("GradMagImage.yuv");                           // and save it
+    sobel();
+    // writeImage("GradMagImage.yuv"); // and save it
 
-    freeInt2DArray(blurredImage, N, M);
-    freeInt2DArray(sobelImage, 2 * N, M);
+    // /* 3. NON-MAXIMUM SUPPRESSION */
+    nms();
+    // writeImage("NMSImage.yuv"); // and save it
 
-    /* 3. NON-MAXIMUM SUPPRESSION */
-    nmsImage = nms(gradMag, gradDir);
-    // copyFromDynamicToStatic(nmsImage, current_y, N, M);     // Get the image afte the nms
-    // writeImage("NMSImage.yuv");                               // and save it
+    // /* 4. HYSTERESIS THRESHOLDING */
+    thresholding(5, 20, weak); // (image, low, hight, weak)
+    // writeImage("ThreshImage.yuv"); // and save it
 
-    freeInt2DArray(gradMag, N, M);
-    freeInt2DArray(gradDir, N, M);
-
-    /* 4. HYSTERESIS THRESHOLDING */
-    tImage = thresholding(nmsImage, 5, 20, weak); // (image, low, hight, weak)
-    // copyFromDynamicToStatic(tImage, current_y, N, M);       // Get the image after thresholding
-    // writeImage("ThreshImage.yuv");                            // and save it
-
-    freeInt2DArray(nmsImage, N, M);
-
-    hImage = hysteresis(tImage, weak);
-    freeInt2DArray(tImage, N, M);
-    copyFromDynamicToStatic(hImage, current_y, N, M); // Get the image after hysteresis (final image)
-    writeImage("FinalImage.yuv");                     // and save it
-
-    freeInt2DArray(hImage, N, M);
+    hysteresis(weak);
+    writeImage("FinalImage.yuv"); // and save it
 
     return 0;
 }
@@ -173,40 +125,20 @@ void writeImage(char *name)
     fclose(frame_yuv);
 }
 
-void gaussianBlur(int **channel, int kernelSize, int kernelSigma, int **output)
+void gaussianBlur(int kernelSize, int kernelSigma)
 {
-    int **gaussX = allocate2DIntArray(N, M);
-    // Generate the Gaussian kernel for size and sigma
-    // double **kernel = gaussianKernel(kernelSize, kernelSigma);
-    double *kernelXY = gaussianKernel1D(kernelSize, kernelSigma);
+    gaussianKernel1D(kernelSigma);
 
-    convolutionHorizontal1D(channel, kernelSize, kernelXY, gaussX);
-    convolutionVertical1D(gaussX, kernelSize, kernelXY, output);
-
-    // convolution(channel, kernelSize, kernel, output);
-
-    // freeDouble2DArray(kernel, kernelSize, kernelSize);
-    free(kernelXY);
-    freeInt2DArray(gaussX, N, M);
+    convolutionHorizontal1D();
+    convolutionVertical1D();
 }
 
-int **sobel(int **channel)
+void sobel(void)
 {
     double maxG = 0.0f; // Maximum gradient magnitude value, used for normalization
     double normCoeff = 0.0f;
 
-    // Allocate memory for the output, the Sobel kernels and the directional gradients
-    int **output = allocate2DIntArray(2 * N, M);
-    int **gradX = allocate2DIntArray(N, M);
-    int **gradY = allocate2DIntArray(N, M);
-    double **Gx = allocate2DDoubleArray(3, 3);
-    double **Gy = allocate2DDoubleArray(3, 3);
-
-    sobelKernelX(Gx);
-    sobelKernelY(Gy);
-
-    convolution(channel, 3, Gx, gradX);
-    convolution(channel, 3, Gy, gradY);
+    convolution();
 
     // Gradient Magnitude
     for (i = 0; i < N; i += TILE_SIZE)
@@ -217,10 +149,10 @@ int **sobel(int **channel)
             {
                 for (jj = j; jj < j + TILE_SIZE; jj += 4)
                 {
-                    output[ii][jj + 0] = sqrt(gradX[ii][jj + 0] * gradX[ii][jj + 0] + gradY[ii][jj + 0] * gradY[ii][jj + 0]);
-                    output[ii][jj + 1] = sqrt(gradX[ii][jj + 1] * gradX[ii][jj + 1] + gradY[ii][jj + 1] * gradY[ii][jj + 1]);
-                    output[ii][jj + 2] = sqrt(gradX[ii][jj + 2] * gradX[ii][jj + 2] + gradY[ii][jj + 2] * gradY[ii][jj + 2]);
-                    output[ii][jj + 3] = sqrt(gradX[ii][jj + 3] * gradX[ii][jj + 3] + gradY[ii][jj + 3] * gradY[ii][jj + 3]);
+                    current_y[ii][jj + 0] = sqrt(gradX[ii][jj + 0] * gradX[ii][jj + 0] + gradY[ii][jj + 0] * gradY[ii][jj + 0]);
+                    current_y[ii][jj + 1] = sqrt(gradX[ii][jj + 1] * gradX[ii][jj + 1] + gradY[ii][jj + 1] * gradY[ii][jj + 1]);
+                    current_y[ii][jj + 2] = sqrt(gradX[ii][jj + 2] * gradX[ii][jj + 2] + gradY[ii][jj + 2] * gradY[ii][jj + 2]);
+                    current_y[ii][jj + 3] = sqrt(gradX[ii][jj + 3] * gradX[ii][jj + 3] + gradY[ii][jj + 3] * gradY[ii][jj + 3]);
                 }
             }
         }
@@ -230,9 +162,9 @@ int **sobel(int **channel)
     {
         for (j = 0; j < M; j++)
         {
-            if (output[i][j] > maxG)
+            if (current_y[i][j] > maxG)
             {
-                maxG = output[i][j];
+                maxG = current_y[i][j];
             }
         }
     }
@@ -247,17 +179,17 @@ int **sobel(int **channel)
             {
                 for (jj = j; jj < j + TILE_SIZE; jj += 4)
                 {
-                    output[ii][jj + 0] = (output[ii][jj + 0] * normCoeff > 255) ? 255 : (int)(output[ii][jj + 0] * normCoeff);
-                    output[ii][jj + 1] = (output[ii][jj + 1] * normCoeff > 255) ? 255 : (int)(output[ii][jj + 1] * normCoeff);
-                    output[ii][jj + 2] = (output[ii][jj + 2] * normCoeff > 255) ? 255 : (int)(output[ii][jj + 2] * normCoeff);
-                    output[ii][jj + 3] = (output[ii][jj + 3] * normCoeff > 255) ? 255 : (int)(output[ii][jj + 3] * normCoeff);
+                    current_y[ii][jj + 0] = (current_y[ii][jj + 0] * normCoeff > 255) ? 255 : (int)(current_y[ii][jj + 0] * normCoeff);
+                    current_y[ii][jj + 1] = (current_y[ii][jj + 1] * normCoeff > 255) ? 255 : (int)(current_y[ii][jj + 1] * normCoeff);
+                    current_y[ii][jj + 2] = (current_y[ii][jj + 2] * normCoeff > 255) ? 255 : (int)(current_y[ii][jj + 2] * normCoeff);
+                    current_y[ii][jj + 3] = (current_y[ii][jj + 3] * normCoeff > 255) ? 255 : (int)(current_y[ii][jj + 3] * normCoeff);
                 }
             }
         }
     }
 
     // Gradient Direction
-    for (i = N; i < 2 * N; i += TILE_SIZE)
+    for (i = 0; i < N; i += TILE_SIZE)
     {
         for (j = 0; j < M; j += TILE_SIZE)
         {
@@ -266,29 +198,29 @@ int **sobel(int **channel)
                 for (jj = j; jj < j + TILE_SIZE; jj += 4)
                 {
 
-                    output[i][j + 0] = atan2(gradY[i - N][j + 0], gradX[i - N][j + 0]) * 180 / _PI;
-                    output[i][j + 1] = atan2(gradY[i - N][j + 1], gradX[i - N][j + 1]) * 180 / _PI;
-                    output[i][j + 2] = atan2(gradY[i - N][j + 2], gradX[i - N][j + 2]) * 180 / _PI;
-                    output[i][j + 3] = atan2(gradY[i - N][j + 3], gradX[i - N][j + 3]) * 180 / _PI;
+                    gradDir[ii][jj + 0] = atan2(gradY[ii][jj + 0], gradX[ii][jj + 0]) * 180 / _PI;
+                    gradDir[ii][jj + 1] = atan2(gradY[ii][jj + 1], gradX[ii][jj + 1]) * 180 / _PI;
+                    gradDir[ii][jj + 2] = atan2(gradY[ii][jj + 2], gradX[ii][jj + 2]) * 180 / _PI;
+                    gradDir[ii][jj + 3] = atan2(gradY[ii][jj + 3], gradX[ii][jj + 3]) * 180 / _PI;
                 }
             }
         }
     }
-
-    freeDouble2DArray(Gx, 3, 3);
-    freeDouble2DArray(Gy, 3, 3);
-    freeInt2DArray(gradX, N, M);
-    freeInt2DArray(gradY, N, M);
-
-    return output;
 }
 
-// TODO: Loop carried dependency
-int **nms(int **gradMag, int **gradDir)
+void nms(void)
 {
-    int **output = allocate2DIntArray(N, M);
     int dir, beforePixel, afterPixel;
     int PI = 180;
+    int gradMag[N][M];
+
+    for (i = 0; i < N; i++)
+    {
+        for (j = 0; j < M; j++)
+        {
+            gradMag[i][j] = current_y[i][j];
+        }
+    }
 
     // Ignore the border pixels
     for (i = 1; i < N - 1; i++)
@@ -320,31 +252,17 @@ int **nms(int **gradMag, int **gradDir)
                 afterPixel = gradMag[i + 1][j + 1];
             }
 
-            if (gradMag[i][j] >= beforePixel && gradMag[i][j] >= afterPixel)
+            if (!(gradMag[i][j] >= beforePixel && gradMag[i][j] >= afterPixel))
             {
-                output[i][j] = gradMag[i][j];
-            }
-            else
-            {
-                output[i][j] = 0;
+                current_y[i][j] = 0;
             }
         }
     }
-
-    return output;
 }
 
-int **thresholding(int **channel, int low, int high, int weak)
+void thresholding(int low, int high, int weak)
 {
-    int **output = allocate2DIntArray(N, M);
     int strong = 255;
-
-    for (i = 0; i < N; i++)
-    {
-        for (j = 0; j < M; j += 4)
-        {
-        }
-    }
 
     for (i = 0; i < N; i += TILE_SIZE)
     {
@@ -354,31 +272,34 @@ int **thresholding(int **channel, int low, int high, int weak)
             {
                 for (jj = j; jj < j + TILE_SIZE; jj += 4)
                 {
-                    thresholdCheck(&channel[ii][jj + 0], &output[ii][jj + 0], low, high, weak, strong);
-                    thresholdCheck(&channel[ii][jj + 1], &output[ii][jj + 1], low, high, weak, strong);
-                    thresholdCheck(&channel[ii][jj + 2], &output[ii][jj + 2], low, high, weak, strong);
-                    thresholdCheck(&channel[ii][jj + 3], &output[ii][jj + 3], low, high, weak, strong);
+                    thresholdCheck(&current_y[ii][jj + 0], low, high, weak, strong);
+                    thresholdCheck(&current_y[ii][jj + 1], low, high, weak, strong);
+                    thresholdCheck(&current_y[ii][jj + 2], low, high, weak, strong);
+                    thresholdCheck(&current_y[ii][jj + 3], low, high, weak, strong);
                 }
             }
         }
     }
-
-    return output;
 }
 
-int **hysteresis(int **channel, int weak)
+void hysteresis(int weak)
 {
-    int **output = allocate2DIntArray(N, M);
-    int **topToBottom = allocate2DIntArray(N, M);
-    int **bottomToTop = allocate2DIntArray(N, M);
-    int **rightToLeft = allocate2DIntArray(N, M);
-    int **leftToRight = allocate2DIntArray(N, M);
+    int topToBottom[N][M];
+    int bottomToTop[N][M];
+    int rightToLeft[N][M];
+    int leftToRight[N][M];
     int fp = -1;
 
-    copyFromDynamicToDynamic(channel, topToBottom, N, M);
-    copyFromDynamicToDynamic(channel, bottomToTop, N, M);
-    copyFromDynamicToDynamic(channel, rightToLeft, N, M);
-    copyFromDynamicToDynamic(channel, leftToRight, N, M);
+    for (i = 0; i < N; i++)
+    {
+        for (j = 0; j < M; j++)
+        {
+            topToBottom[i][j] = current_y[i][j];
+            bottomToTop[i][j] = current_y[i][j];
+            rightToLeft[i][j] = current_y[i][j];
+            leftToRight[i][j] = current_y[i][j];
+        }
+    }
 
     for (i = 1; i < N - 1; i++)
     {
@@ -479,109 +400,41 @@ int **hysteresis(int **channel, int weak)
                 fp = 255;
             }
 
-            output[i][j] = fp;
+            current_y[i][j] = fp;
         }
     }
-
-    freeInt2DArray(topToBottom, N, M);
-    freeInt2DArray(bottomToTop, N, M);
-    freeInt2DArray(rightToLeft, N, M);
-    freeInt2DArray(leftToRight, N, M);
-
-    return output;
 }
 
-// TODO: Calculate only 1/4 of the kernel, due to symmetry
-double **gaussianKernel(int size, int sigma)
+void gaussianKernel1D(int sigma)
 {
-    double **kernel = malloc(sizeof(double *) * size);
-    int x, y;
-    int center = size / 2;
-    double res = 0.0f;
-    double sum = 0.0f;
-
-    for (i = 0; i < size; i++) // checking purpose
-    {
-        kernel[i] = malloc(sizeof(double) * size);
-        for (j = 0; j < size; j++)
-        {
-            x = j - center;
-            y = i - center;
-            res = exp(-((double)(x * x + y * y) / (2 * sigma * sigma)));
-            sum += res;
-            kernel[i][j] = res;
-        }
-    }
-
-    // Normalize the kernel
-    for (i = 0; i < size; i++)
-    {
-        for (j = 0; j < size; j++)
-        {
-            kernel[i][j] = kernel[i][j] / sum;
-        }
-    }
-
-    return kernel;
-}
-
-double *gaussianKernel1D(int size, int sigma)
-{
-    double *kernel = malloc(sizeof(double *) * size);
+    // double *kernel = malloc(sizeof(double *) * size);
     int x;
-    int center = size / 2;
+    int center = KERNEL_SIZE / 2;
     double res = 0.0f;
     double sum = 0.0f;
 
-    for (i = 0; i < size; i++) // checking purpose
+    for (i = 0; i < KERNEL_SIZE; i++) // checking purpose
     {
         x = i - center;
         res = exp(-((double)(x * x) / (2 * sigma * sigma)));
         sum += res;
-        kernel[i] = res;
+        gaussian_kernel[i] = res;
     }
 
     // Normalize the kernel
-    for (i = 0; i < size; i++)
+    for (i = 0; i < KERNEL_SIZE; i++)
     {
-        kernel[i] = kernel[i] / sum;
+        gaussian_kernel[i] = gaussian_kernel[i] / sum;
     }
-
-    return kernel;
 }
 
-void sobelKernelX(double **kernel)
-{
-    kernel[0][0] = -1;
-    kernel[0][1] = 0;
-    kernel[0][2] = 1;
-    kernel[1][0] = -2;
-    kernel[1][1] = 0;
-    kernel[1][2] = 2;
-    kernel[2][0] = -1;
-    kernel[2][1] = 0;
-    kernel[2][2] = 1;
-}
-
-void sobelKernelY(double **kernel)
-{
-    kernel[0][0] = -1;
-    kernel[0][1] = -2;
-    kernel[0][2] = -1;
-    kernel[1][0] = 0;
-    kernel[1][1] = 0;
-    kernel[1][2] = 0;
-    kernel[2][0] = 1;
-    kernel[2][1] = 2;
-    kernel[2][2] = 1;
-}
-
-void convolution(int **image, int kernelSize, double **kernel, int **output)
+void convolution(void)
 {
     int ki, kj;
-    int kernelCenter = kernelSize / 2;
+    int kernelCenter = KERNEL_SOBEL / 2;
     int sum0 = 0, sum1 = 0, sum2 = 0, sum3 = 0;
 
+    //  Convolution X
     for (i = 0; i < N; i++)
     {
         for (j = 0; j < M; j += 4)
@@ -593,36 +446,73 @@ void convolution(int **image, int kernelSize, double **kernel, int **output)
                 {
                     if (i + ki >= 0 && i + ki < N && j + kj >= 0 && j + kj < M)
                     {
-                        sum0 += image[i + ki][j + kj] * kernel[ki + kernelCenter][kj + kernelCenter];
+                        sum0 += current_y[i + ki][j + kj] * sobel_kernel_x[ki + kernelCenter][kj + kernelCenter];
                     }
                     if (i + ki >= 0 && i + ki < N && j + 1 + kj >= 0 && j + 1 + kj < M)
                     {
-                        sum1 += image[i + ki][j + 1 + kj] * kernel[ki + kernelCenter][kj + kernelCenter];
+                        sum1 += current_y[i + ki][j + 1 + kj] * sobel_kernel_x[ki + kernelCenter][kj + kernelCenter];
                     }
                     if (i + ki >= 0 && i + ki < N && j + 2 + kj >= 0 && j + 2 + kj < M)
                     {
-                        sum2 += image[i + ki][j + 2 + kj] * kernel[ki + kernelCenter][kj + kernelCenter];
+                        sum2 += current_y[i + ki][j + 2 + kj] * sobel_kernel_x[ki + kernelCenter][kj + kernelCenter];
                     }
                     if (i + ki >= 0 && i + ki < N && j + 3 + kj >= 0 && j + 3 + kj < M)
                     {
-                        sum3 += image[i + ki][j + 3 + kj] * kernel[ki + kernelCenter][kj + kernelCenter];
+                        sum3 += current_y[i + ki][j + 3 + kj] * sobel_kernel_x[ki + kernelCenter][kj + kernelCenter];
                     }
                 }
             }
 
-            output[i][j] = sum0;
-            output[i][j + 1] = sum1;
-            output[i][j + 2] = sum2;
-            output[i][j + 3] = sum3;
+            gradX[i][j] = sum0;
+            gradX[i][j + 1] = sum1;
+            gradX[i][j + 2] = sum2;
+            gradX[i][j + 3] = sum3;
+        }
+    }
+
+    //  Convolution Y
+    for (i = 0; i < N; i++)
+    {
+        for (j = 0; j < M; j += 4)
+        {
+            sum0 = sum1 = sum2 = sum3 = 0;
+            for (ki = -kernelCenter; ki <= kernelCenter; ki++)
+            {
+                for (kj = -kernelCenter; kj <= kernelCenter; kj++)
+                {
+                    if (i + ki >= 0 && i + ki < N && j + kj >= 0 && j + kj < M)
+                    {
+                        sum0 += current_y[i + ki][j + kj] * sobel_kernel_y[ki + kernelCenter][kj + kernelCenter];
+                    }
+                    if (i + ki >= 0 && i + ki < N && j + 1 + kj >= 0 && j + 1 + kj < M)
+                    {
+                        sum1 += current_y[i + ki][j + 1 + kj] * sobel_kernel_y[ki + kernelCenter][kj + kernelCenter];
+                    }
+                    if (i + ki >= 0 && i + ki < N && j + 2 + kj >= 0 && j + 2 + kj < M)
+                    {
+                        sum2 += current_y[i + ki][j + 2 + kj] * sobel_kernel_y[ki + kernelCenter][kj + kernelCenter];
+                    }
+                    if (i + ki >= 0 && i + ki < N && j + 3 + kj >= 0 && j + 3 + kj < M)
+                    {
+                        sum3 += current_y[i + ki][j + 3 + kj] * sobel_kernel_y[ki + kernelCenter][kj + kernelCenter];
+                    }
+                }
+            }
+
+            gradY[i][j] = sum0;
+            gradY[i][j + 1] = sum1;
+            gradY[i][j + 2] = sum2;
+            gradY[i][j + 3] = sum3;
         }
     }
 }
 
-void convolutionHorizontal1D(int **image, int kernelSize, double *kernel, int **output)
+void convolutionHorizontal1D(void)
 {
     int ki;
-    int kCenter = kernelSize / 2;
+    int kCenter = KERNEL_SIZE / 2;
     int sum = 0;
+    int output[N][M];
 
     for (i = 0; i < N; i++)
     {
@@ -634,19 +524,28 @@ void convolutionHorizontal1D(int **image, int kernelSize, double *kernel, int **
             {
                 if (j + ki >= 0 && j + ki < N)
                 { // Boundary checki
-                    sum += image[i][j + ki] * kernel[ki + kCenter];
+                    sum += current_y[i][j + ki] * gaussian_kernel[ki + kCenter];
                 }
             }
             output[i][j] = sum;
         }
     }
+
+    for (i = 0; i < N; i++)
+    {
+        for (j = 0; j < M; j++)
+        {
+            current_y[i][j] = output[i][j];
+        }
+    }
 }
 
-void convolutionVertical1D(int **image, int kernelSize, double *kernel, int **output)
+void convolutionVertical1D(void)
 {
     int ki;
-    int kCenter = kernelSize / 2;
+    int kCenter = KERNEL_SIZE / 2;
     int sum = 0;
+    int output[N][M];
 
     for (i = 0; i < N; i++)
     {
@@ -658,152 +557,34 @@ void convolutionVertical1D(int **image, int kernelSize, double *kernel, int **ou
             {
                 if (i + ki >= 0 && i + ki < M)
                 {
-                    sum += image[i + ki][j] * kernel[ki + kCenter];
+                    sum += current_y[i + ki][j] * gaussian_kernel[ki + kCenter];
                 }
             }
             output[i][j] = sum;
         }
     }
-}
 
-int **allocate2DIntArray(int rows, int cols)
-{
-    // Allocate memory for the row pointers
-    int **array = (int **)malloc(rows * sizeof(int *));
-    if (array == NULL)
+    for (i = 0; i < N; i++)
     {
-        perror("Failed to allocate memory for rows");
-        exit(EXIT_FAILURE);
-    }
-
-    // Allocate memory for each row
-    for (i = 0; i < rows; i++)
-    {
-        array[i] = (int *)malloc(cols * sizeof(int));
-        if (array[i] == NULL)
+        for (j = 0; j < M; j++)
         {
-            perror("Failed to allocate memory for columns");
-            // Free already allocated rows
-            for (j = 0; j < i; j++)
-            {
-                free(array[j]);
-            }
-            free(array);
-            exit(EXIT_FAILURE);
-        }
-    }
-
-    return array;
-}
-
-double **allocate2DDoubleArray(int rows, int cols)
-{
-    // Allocate memory for the row pointers
-    double **array = (double **)malloc(rows * sizeof(double *));
-    if (array == NULL)
-    {
-        perror("Failed to allocate memory for rows");
-        exit(EXIT_FAILURE);
-    }
-
-    // Allocate memory for each row
-    for (i = 0; i < rows; i++)
-    {
-        array[i] = (double *)malloc(cols * sizeof(double));
-        if (array[i] == NULL)
-        {
-            perror("Failed to allocate memory for columns");
-            // Free already allocated rows
-            for (j = 0; j < i; j++)
-            {
-                free(array[j]);
-            }
-            free(array);
-            exit(EXIT_FAILURE);
-        }
-    }
-
-    return array;
-}
-
-void freeInt2DArray(int **array, int rows, int cols)
-{
-    for (i = 0; i < rows; i++)
-    {
-        free(array[i]);
-        // free(array[i + 1]);
-        // free(array[i + 2]);
-        // free(array[i + 3]);
-    }
-    free(array);
-}
-
-void freeDouble2DArray(double **array, int rows, int cols)
-{
-    for (i = 0; i < rows; i++)
-    {
-        free(array[i]);
-        // free(array[i + 1]);
-        // free(array[i + 2]);
-        // free(array[i + 3]);
-    }
-    free(array);
-}
-
-void copyFromDynamicToDynamic(int **source, int **destination, int rows, int cols)
-{
-    for (i = 0; i < rows; i++)
-    {
-        for (j = 0; j < cols; j += 4)
-        {
-            destination[i][j] = source[i][j];
-            destination[i][j + 1] = source[i][j + 1];
-            destination[i][j + 2] = source[i][j + 2];
-            destination[i][j + 3] = source[i][j + 3];
+            current_y[i][j] = output[i][j];
         }
     }
 }
 
-void copyFromDynamicToStatic(int **source, int destination[N][M], int rows, int cols)
-{
-    for (i = 0; i < rows; i++)
-    {
-        for (j = 0; j < cols; j += 4)
-        {
-            destination[i][j] = source[i][j];
-            destination[i][j + 1] = source[i][j + 1];
-            destination[i][j + 2] = source[i][j + 2];
-            destination[i][j + 3] = source[i][j + 3];
-        }
-    }
-}
-
-void copyFromStaticToDynamic(int source[N][M], int **destination, int rows, int cols)
-{
-    for (i = 0; i < rows; i++)
-    {
-        for (j = 0; j < cols; j += 4)
-        {
-            destination[i][j] = source[i][j];
-            destination[i][j + 1] = source[i][j + 1];
-            destination[i][j + 2] = source[i][j + 2];
-            destination[i][j + 3] = source[i][j + 3];
-        }
-    }
-}
-
-void thresholdCheck(int *channel, int *output, int low, int high, int weak, int strong)
+void thresholdCheck(int *channel, int low, int high, int weak, int strong)
 {
     if (*channel >= high)
     {
-        *output = strong;
+        *channel = strong;
     }
     else if (*channel >= low)
     {
-        *output = weak;
+        *channel = weak;
     }
     else
     {
-        *output = 0;
+        *channel = 0;
     }
 }
