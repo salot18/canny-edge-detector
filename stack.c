@@ -12,8 +12,10 @@ __value_in_regs struct __initial_stackheap __user_initial_stackheap(
     // config.stack_limit = 0x00100000;
 
     /* works */
-    config.heap_base = 0x00260000;
-    config.stack_base = 0x00275000;
+    config.heap_base = 0x000CA690;
+    config.stack_base = 0x00166C04;
+    // config.heap_base = 0x00006700;
+    // config.stack_base = 0x000A2C40;
 
     /* factory defaults */
     // config.heap_base   = 0x00060000;

@@ -14,14 +14,17 @@
 #define TILE_SIZE 100
 
 /* code for armulator*/
-#pragma arm section zidata = "ram"
+#pragma arm section zidata = "cache"
 int current_y[N][M];
+int i, j, ii, jj;
 #pragma arm section
 
+#pragma arm section zidata = "ram"
 double gaussian_kernel[KERNEL_SIZE];
 int gradX[N][M];
 int gradY[N][M];
 int gradDir[N][M];
+#pragma arm section
 
 const int sobel_kernel_x[3][3] = {
     {-1, 0, 1},
@@ -34,8 +37,6 @@ const int sobel_kernel_y[3][3] = {
     {0, 0, 0},
     {1, 2, 1},
 };
-
-int i, j, ii, jj;
 
 /* FUNCTIONS */
 void readImage(void);
