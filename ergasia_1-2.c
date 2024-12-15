@@ -664,7 +664,7 @@ void copyFromCache(int start, int delta)
         if (cache[ci - start][0] == -1)
         {
             printf("skipping padding line %d\n", ci);
-            continue;
+            break;
         }
         for (cj = 0; cj < M; cj++)
         {
@@ -675,13 +675,10 @@ void copyFromCache(int start, int delta)
 
 void fillCacheWithPadding(int start, int delta)
 {
-    int ci, cj;
+    int ci;
     int end = start + delta;
     for (ci = start; ci < end; ci++)
     {
-        for (cj = 0; cj < M; cj++)
-        {
-            cache[ci - start][cj] = -1;
-        }
+        cache[ci - start][0] = -1;
     }
 }
