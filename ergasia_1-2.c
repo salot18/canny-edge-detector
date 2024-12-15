@@ -12,14 +12,16 @@
 #define KERNEL_SIZE 7
 #define KERNEL_SOBEL 3
 #define TILE_SIZE 100
+#define CACHE_ROWS 3
 
 /* code for armulator*/
 #pragma arm section zidata = "cache"
-int current_y[N][M];
-int i, j, ii, jj;
+int cache[CACHE_ROWS][M];
 #pragma arm section
 
 #pragma arm section zidata = "ram"
+int current_y[N][M];
+int i, j, ii, jj;
 double gaussian_kernel[KERNEL_SIZE];
 int gradX[N][M];
 int gradY[N][M];
@@ -56,6 +58,10 @@ void convolutionVertical1D(void);
 
 void thresholdCheck(int *channel, int low, int high, int weak, int strong);
 
+void copyToCache(int start, int delta);
+void copyFromCache(int start, int delta);
+void fillCacheWithPadding(int start, int delta);
+
 int main()
 {
     int weak = 50;
@@ -68,7 +74,7 @@ int main()
 
     /* 2. SOBEL MASK */
     sobel();
-    // writeImage("GradMagImage.yuv"); // and save it
+    writeImage("GradMagImage.yuv"); // and save it
 
     // /* 3. NON-MAXIMUM SUPPRESSION */
     nms();
@@ -136,6 +142,8 @@ void gaussianBlur(int kernelSize, int kernelSigma)
 
 void sobel(void)
 {
+    int cache_i = 0;
+    int tempi, tempj;
     double maxG = 0.0f; // Maximum gradient magnitude value, used for normalization
     double normCoeff = 0.0f;
     int *ptrCurrentY = &current_y[0][0];
@@ -143,21 +151,41 @@ void sobel(void)
     convolution();
 
     // Gradient Magnitude
-    for (i = 0; i < N; i += TILE_SIZE)
+    for (i = 0; i < N; i++)
     {
-        for (j = 0; j < M; j += TILE_SIZE)
+        cache_i = i % CACHE_ROWS;
+        for (j = 0; j < M; j += 4)
         {
-            for (ii = i; ii < i + TILE_SIZE; ii++)
+            cache[cache_i][j + 0] = sqrt(gradX[i][j + 0] * gradX[i][j + 0] + gradY[i][j + 0] * gradY[i][j + 0]);
+            cache[cache_i][j + 1] = sqrt(gradX[i][j + 1] * gradX[i][j + 1] + gradY[i][j + 1] * gradY[i][j + 1]);
+            cache[cache_i][j + 2] = sqrt(gradX[i][j + 2] * gradX[i][j + 2] + gradY[i][j + 2] * gradY[i][j + 2]);
+            cache[cache_i][j + 3] = sqrt(gradX[i][j + 3] * gradX[i][j + 3] + gradY[i][j + 3] * gradY[i][j + 3]);
+        }
+        if (cache_i == 0 && i <= N - CACHE_ROWS)
+        {
+            printf("wrote lines %d->%d\n", i, i + CACHE_ROWS - 1);
+            copyFromCache(i, CACHE_ROWS);
+        }
+        else if (i < N && i > N - CACHE_ROWS)
+        {
+            cache_i = i % CACHE_ROWS;
+            for (tempi = 0; tempi < cache_i; tempi++)
             {
-                for (jj = j; jj < j + TILE_SIZE; jj += 4)
+                for (tempj = 0; tempj < M; tempj++)
                 {
-                    current_y[ii][jj + 0] = sqrt(gradX[ii][jj + 0] * gradX[ii][jj + 0] + gradY[ii][jj + 0] * gradY[ii][jj + 0]);
-                    current_y[ii][jj + 1] = sqrt(gradX[ii][jj + 1] * gradX[ii][jj + 1] + gradY[ii][jj + 1] * gradY[ii][jj + 1]);
-                    current_y[ii][jj + 2] = sqrt(gradX[ii][jj + 2] * gradX[ii][jj + 2] + gradY[ii][jj + 2] * gradY[ii][jj + 2]);
-                    current_y[ii][jj + 3] = sqrt(gradX[ii][jj + 3] * gradX[ii][jj + 3] + gradY[ii][jj + 3] * gradY[ii][jj + 3]);
+                    cache[tempi][tempj] = sqrt(gradX[i][j] * gradX[i][j] + gradY[i][j] * gradY[i][j]);
                 }
             }
+            fillCacheWithPadding(cache_i, CACHE_ROWS - cache_i);
+            copyFromCache(i, CACHE_ROWS);
         }
+        // for (j = 0; j < M; j += 4)
+        // {
+        //     current_y[i][j + 0] = sqrt(gradX[i][j + 0] * gradX[i][j + 0] + gradY[i][j + 0] * gradY[i][j + 0]);
+        //     current_y[i][j + 1] = sqrt(gradX[i][j + 1] * gradX[i][j + 1] + gradY[i][j + 1] * gradY[i][j + 1]);
+        //     current_y[i][j + 2] = sqrt(gradX[i][j + 2] * gradX[i][j + 2] + gradY[i][j + 2] * gradY[i][j + 2]);
+        //     current_y[i][j + 3] = sqrt(gradX[i][j + 3] * gradX[i][j + 3] + gradY[i][j + 3] * gradY[i][j + 3]);
+        // }
     }
 
     for (i = 0; i < N * M; i += 4)
@@ -182,39 +210,27 @@ void sobel(void)
 
     // Normalize gradient magnitude (0 - 255)
     normCoeff = 255 / maxG;
-    for (i = 0; i < N; i += TILE_SIZE)
+    for (i = 0; i < N; i++)
     {
-        for (j = 0; j < M; j += TILE_SIZE)
+        for (j = 0; j < M; j += 4)
         {
-            for (ii = i; ii < i + TILE_SIZE; ii++)
-            {
-                for (jj = j; jj < j + TILE_SIZE; jj += 4)
-                {
-                    current_y[ii][jj + 0] = (current_y[ii][jj + 0] * normCoeff > 255) ? 255 : (int)(current_y[ii][jj + 0] * normCoeff);
-                    current_y[ii][jj + 1] = (current_y[ii][jj + 1] * normCoeff > 255) ? 255 : (int)(current_y[ii][jj + 1] * normCoeff);
-                    current_y[ii][jj + 2] = (current_y[ii][jj + 2] * normCoeff > 255) ? 255 : (int)(current_y[ii][jj + 2] * normCoeff);
-                    current_y[ii][jj + 3] = (current_y[ii][jj + 3] * normCoeff > 255) ? 255 : (int)(current_y[ii][jj + 3] * normCoeff);
-                }
-            }
+            current_y[i][j + 0] = (current_y[i][j + 0] * normCoeff > 255) ? 255 : (int)(current_y[i][j + 0] * normCoeff);
+            current_y[i][j + 1] = (current_y[i][j + 1] * normCoeff > 255) ? 255 : (int)(current_y[i][j + 1] * normCoeff);
+            current_y[i][j + 2] = (current_y[i][j + 2] * normCoeff > 255) ? 255 : (int)(current_y[i][j + 2] * normCoeff);
+            current_y[i][j + 3] = (current_y[i][j + 3] * normCoeff > 255) ? 255 : (int)(current_y[i][j + 3] * normCoeff);
         }
     }
 
     // Gradient Direction
-    for (i = 0; i < N; i += TILE_SIZE)
+    for (i = 0; i < N; i++)
     {
-        for (j = 0; j < M; j += TILE_SIZE)
+        for (j = 0; j < M; j += 4)
         {
-            for (ii = i; ii < i + TILE_SIZE; ii++)
-            {
-                for (jj = j; jj < j + TILE_SIZE; jj += 4)
-                {
 
-                    gradDir[ii][jj + 0] = atan2(gradY[ii][jj + 0], gradX[ii][jj + 0]) * 180 / _PI;
-                    gradDir[ii][jj + 1] = atan2(gradY[ii][jj + 1], gradX[ii][jj + 1]) * 180 / _PI;
-                    gradDir[ii][jj + 2] = atan2(gradY[ii][jj + 2], gradX[ii][jj + 2]) * 180 / _PI;
-                    gradDir[ii][jj + 3] = atan2(gradY[ii][jj + 3], gradX[ii][jj + 3]) * 180 / _PI;
-                }
-            }
+            gradDir[i][j + 0] = atan2(gradY[i][j + 0], gradX[i][j + 0]) * 180 / _PI;
+            gradDir[i][j + 1] = atan2(gradY[i][j + 1], gradX[i][j + 1]) * 180 / _PI;
+            gradDir[i][j + 2] = atan2(gradY[i][j + 2], gradX[i][j + 2]) * 180 / _PI;
+            gradDir[i][j + 3] = atan2(gradY[i][j + 3], gradX[i][j + 3]) * 180 / _PI;
         }
     }
 }
@@ -623,5 +639,49 @@ void thresholdCheck(int *channel, int low, int high, int weak, int strong)
     else
     {
         *channel = 0;
+    }
+}
+
+void copyToCache(int start, int delta)
+{
+    int ci, cj;
+    int end = start + delta;
+    for (ci = start; ci < end; ci++)
+    {
+        for (cj = 0; cj < M; cj++)
+        {
+            cache[ci - start][cj] = current_y[ci][cj];
+        }
+    }
+}
+
+void copyFromCache(int start, int delta)
+{
+    int ci, cj;
+    int end = start + delta;
+    for (ci = start; ci < end; ci++)
+    {
+        if (cache[ci - start][0] == -1)
+        {
+            printf("skipping padding line %d\n", ci);
+            continue;
+        }
+        for (cj = 0; cj < M; cj++)
+        {
+            current_y[ci][cj] = cache[ci - start][cj];
+        }
+    }
+}
+
+void fillCacheWithPadding(int start, int delta)
+{
+    int ci, cj;
+    int end = start + delta;
+    for (ci = start; ci < end; ci++)
+    {
+        for (cj = 0; cj < M; cj++)
+        {
+            cache[ci - start][cj] = -1;
+        }
     }
 }
