@@ -25,6 +25,7 @@ int i, j, ii, jj;
 double gaussian_kernel[KERNEL_SIZE];
 int gradX[N][M];
 int gradY[N][M];
+int gradMag[N][M];
 int gradDir[N][M];
 #pragma arm section
 
@@ -42,7 +43,8 @@ const int sobel_kernel_y[3][3] = {
 
 const enum targetArray {
     CURRENT_Y = 0,
-    GRADDIR = 1
+    GRADDIR = 1,
+    GRADMAG = 2
 } ta;
 
 /* FUNCTIONS */
@@ -79,11 +81,11 @@ int main()
 
     /* 2. SOBEL MASK */
     sobel();
-    writeImage("GradMagImage.yuv"); // and save it
+    // writeImage("GradMagImage.yuv"); // and save it
 
     // /* 3. NON-MAXIMUM SUPPRESSION */
     nms();
-    // writeImage("NMSImage.yuv"); // and save it
+    writeImage("NMSImage.yuv"); // and save it
 
     // /* 4. HYSTERESIS THRESHOLDING */
     thresholding(5, 20, weak); // (image, low, hight, weak)
@@ -243,10 +245,12 @@ void sobel(void)
 void nms(void)
 {
     int dir, beforePixel, afterPixel;
+    int cache_i;
     int PI = 180;
-    int gradMag[N][M];
+    // int gradMag[N][M];
     int *ptrCurrentY = &current_y[0][0];
     int *ptrGradMag = &gradMag[0][0];
+    enum targetArray ta = GRADMAG;
 
     for (i = 0; i < N * M; i += 4)
     {
@@ -259,6 +263,8 @@ void nms(void)
     // Ignore the border pixels
     for (i = 1; i < N - 1; i++)
     {
+        cache_i = (i) % (CACHE_ROWS - 1);
+        copyToCache(i, CACHE_ROWS - 1, ta);
         for (j = 1; j < M - 1; j++)
         {
             dir = gradDir[i][j];
@@ -267,30 +273,31 @@ void nms(void)
 
             if (((0 <= dir) || (dir < PI / 8)) || ((15 * PI / 8 <= dir) || (dir <= 2 * PI)))
             {
-                beforePixel = gradMag[i][j - 1];
-                afterPixel = gradMag[i][j + 1];
+                beforePixel = cache[cache_i][j - 1];
+                afterPixel = cache[cache_i][j + 1];
             }
             else if (((PI / 8 <= dir) || (dir < 3 * PI / 8)) || ((9 * PI / 8 <= dir) || (dir <= 11 * PI / 8)))
             {
-                beforePixel = gradMag[i + 1][j - 1];
-                afterPixel = gradMag[i - 1][j + 1];
+                beforePixel = cache[cache_i + 1][j - 1];
+                afterPixel = cache[cache_i - 1][j + 1];
             }
             else if (((3 * PI / 8 <= dir) || (dir < 5 * PI / 8)) || ((11 * PI / 8 <= dir) || (dir <= 13 * PI / 8)))
             {
-                beforePixel = gradMag[i - 1][j];
-                afterPixel = gradMag[i + 1][j];
+                beforePixel = cache[cache_i - 1][j];
+                afterPixel = cache[cache_i + 1][j];
             }
             else
             {
-                beforePixel = gradMag[i - 1][j - 1];
-                afterPixel = gradMag[i + 1][j + 1];
+                beforePixel = cache[cache_i - 1][j - 1];
+                afterPixel = cache[cache_i + 1][j + 1];
             }
 
-            if (!(gradMag[i][j] >= beforePixel && gradMag[i][j] >= afterPixel))
+            if (!(cache[cache_i][j] >= beforePixel && cache[cache_i][j] >= afterPixel))
             {
                 current_y[i][j] = 0;
             }
         }
+        // copyFromCache(i - CACHE_ROWS, CACHE_ROWS - 1, ta);
     }
 }
 
@@ -663,6 +670,9 @@ void copyToCache(int start, int delta, enum targetArray ta)
     case 1:
         ptrArray = &gradDir;
         break;
+    case 2:
+        ptrArray = &gradMag;
+        break;
     default:
         exit(1);
     }
@@ -692,6 +702,9 @@ void copyFromCache(int start, int delta, enum targetArray ta)
         break;
     case 1:
         ptrArray = &gradDir;
+        break;
+    case 2:
+        ptrArray = &gradMag;
         break;
     default:
         exit(1);
