@@ -12,7 +12,7 @@
 #define KERNEL_SIZE 7
 #define KERNEL_SOBEL 3
 #define TILE_SIZE 100
-#define CACHE_ROWS 10
+#define CACHE_ROWS 4
 
 /* code for armulator*/
 #pragma arm section zidata = "cache"
@@ -155,6 +155,11 @@ void sobel(void)
     for (i = 0; i < N; i++)
     {
         cache_i = i % CACHE_ROWS;
+        if (i != 0 && cache_i == 0 && i <= N - CACHE_ROWS)
+        {
+            printf("Wrote lines from cache %d-> %d\n", i - CACHE_ROWS, i - 1);
+            copyFromCache(i - CACHE_ROWS, CACHE_ROWS);
+        }
         for (j = 0; j < M; j += 4)
         {
             cache[cache_i][j + 0] = sqrt(gradX[i][j + 0] * gradX[i][j + 0] + gradY[i][j + 0] * gradY[i][j + 0]);
@@ -162,13 +167,8 @@ void sobel(void)
             cache[cache_i][j + 2] = sqrt(gradX[i][j + 2] * gradX[i][j + 2] + gradY[i][j + 2] * gradY[i][j + 2]);
             cache[cache_i][j + 3] = sqrt(gradX[i][j + 3] * gradX[i][j + 3] + gradY[i][j + 3] * gradY[i][j + 3]);
         }
-        if (i != 0 && cache_i == 0 && i <= N - CACHE_ROWS)
-        {
-            printf("Wrote lines from cache %d-> %d\n", i - CACHE_ROWS, i - 1);
-            copyFromCache(i - CACHE_ROWS, CACHE_ROWS);
-        }
     }
-    printf("Writing remaining lines %d-> %d\n", N - CACHE_ROWS, N);
+    printf("Writing remaining lines %d-> %d\n", N - CACHE_ROWS, N - 1);
     copyFromCache(N - CACHE_ROWS, CACHE_ROWS);
     fillCacheWithPadding(0, CACHE_ROWS);
 
