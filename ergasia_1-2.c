@@ -40,6 +40,11 @@ const int sobel_kernel_y[3][3] = {
     {1, 2, 1},
 };
 
+const enum targetArray {
+    CURRENT_Y = 0,
+    GRADDIR = 1
+} ta;
+
 /* FUNCTIONS */
 void readImage(void);
 void writeImage(char *name);
@@ -58,8 +63,8 @@ void convolutionVertical1D(void);
 
 void thresholdCheck(int *channel, int low, int high, int weak, int strong);
 
-void copyToCache(int start, int delta);
-void copyFromCache(int start, int delta);
+void copyToCache(int start, int delta, enum targetArray ta);
+void copyFromCache(int start, int delta, enum targetArray ta);
 void fillCacheWithPadding(int start, int delta);
 
 int main()
@@ -146,6 +151,7 @@ void sobel(void)
     double maxG = 0.0f; // Maximum gradient magnitude value, used for normalization
     double normCoeff = 0.0f;
     int *ptrCurrentY = &current_y[0][0];
+    enum targetArray ta = CURRENT_Y;
 
     convolution();
     fillCacheWithPadding(0, CACHE_ROWS);
@@ -156,7 +162,7 @@ void sobel(void)
         cache_i = i % CACHE_ROWS;
         if (i != 0 && cache_i == 0 && i <= N - CACHE_ROWS)
         {
-            copyFromCache(i - CACHE_ROWS, CACHE_ROWS);
+            copyFromCache(i - CACHE_ROWS, CACHE_ROWS, ta);
         }
         for (j = 0; j < M; j += 4)
         {
@@ -166,8 +172,7 @@ void sobel(void)
             cache[cache_i][j + 3] = sqrt(gradX[i][j + 3] * gradX[i][j + 3] + gradY[i][j + 3] * gradY[i][j + 3]);
         }
     }
-    copyFromCache(N - CACHE_ROWS, CACHE_ROWS);
-    fillCacheWithPadding(0, CACHE_ROWS);
+    copyFromCache(N - CACHE_ROWS, CACHE_ROWS, ta);
 
     for (i = 0; i < N * M; i += 4)
     {
@@ -191,29 +196,48 @@ void sobel(void)
 
     // Normalize gradient magnitude (0 - 255)
     normCoeff = 255 / maxG;
+    fillCacheWithPadding(0, CACHE_ROWS);
     for (i = 0; i < N; i++)
     {
+        cache_i = i % CACHE_ROWS;
+        if (i != 0 && cache_i == 0 && i <= N - CACHE_ROWS)
+        {
+            copyFromCache(i - CACHE_ROWS, CACHE_ROWS, ta);
+        }
+        if (cache_i == 0 && i <= N - CACHE_ROWS)
+        {
+            copyToCache(i, CACHE_ROWS, ta);
+        }
         for (j = 0; j < M; j += 4)
         {
-            current_y[i][j + 0] = (current_y[i][j + 0] * normCoeff > 255) ? 255 : (int)(current_y[i][j + 0] * normCoeff);
-            current_y[i][j + 1] = (current_y[i][j + 1] * normCoeff > 255) ? 255 : (int)(current_y[i][j + 1] * normCoeff);
-            current_y[i][j + 2] = (current_y[i][j + 2] * normCoeff > 255) ? 255 : (int)(current_y[i][j + 2] * normCoeff);
-            current_y[i][j + 3] = (current_y[i][j + 3] * normCoeff > 255) ? 255 : (int)(current_y[i][j + 3] * normCoeff);
+            cache[cache_i][j + 0] = (cache[cache_i][j + 0] * normCoeff > 255) ? 255 : (int)(cache[cache_i][j + 0] * normCoeff);
+            cache[cache_i][j + 1] = (cache[cache_i][j + 1] * normCoeff > 255) ? 255 : (int)(cache[cache_i][j + 1] * normCoeff);
+            cache[cache_i][j + 2] = (cache[cache_i][j + 2] * normCoeff > 255) ? 255 : (int)(cache[cache_i][j + 2] * normCoeff);
+            cache[cache_i][j + 3] = (cache[cache_i][j + 3] * normCoeff > 255) ? 255 : (int)(cache[cache_i][j + 3] * normCoeff);
         }
     }
+    copyFromCache(N - CACHE_ROWS, CACHE_ROWS, ta);
 
+    ta = GRADDIR;
+    fillCacheWithPadding(0, CACHE_ROWS);
     // Gradient Direction
     for (i = 0; i < N; i++)
     {
+        cache_i = i % CACHE_ROWS;
+        if (i != 0 && cache_i == 0 && i <= N - CACHE_ROWS)
+        {
+            copyFromCache(i - CACHE_ROWS, CACHE_ROWS, ta);
+        }
         for (j = 0; j < M; j += 4)
         {
 
-            gradDir[i][j + 0] = atan2(gradY[i][j + 0], gradX[i][j + 0]) * 180 / _PI;
-            gradDir[i][j + 1] = atan2(gradY[i][j + 1], gradX[i][j + 1]) * 180 / _PI;
-            gradDir[i][j + 2] = atan2(gradY[i][j + 2], gradX[i][j + 2]) * 180 / _PI;
-            gradDir[i][j + 3] = atan2(gradY[i][j + 3], gradX[i][j + 3]) * 180 / _PI;
+            cache[cache_i][j + 0] = atan2(gradY[i][j + 0], gradX[i][j + 0]) * 180 / _PI;
+            cache[cache_i][j + 1] = atan2(gradY[i][j + 1], gradX[i][j + 1]) * 180 / _PI;
+            cache[cache_i][j + 2] = atan2(gradY[i][j + 2], gradX[i][j + 2]) * 180 / _PI;
+            cache[cache_i][j + 3] = atan2(gradY[i][j + 3], gradX[i][j + 3]) * 180 / _PI;
         }
     }
+    copyFromCache(N - CACHE_ROWS, CACHE_ROWS, ta);
 }
 
 void nms(void)
@@ -626,16 +650,29 @@ void thresholdCheck(int *channel, int low, int high, int weak, int strong)
     Loads current_y rows into cache
     start: starting index row of current_y
     delta: number of rows
+    target: 0->currnt_y, 1->gradDir
 */
-void copyToCache(int start, int delta)
+void copyToCache(int start, int delta, enum targetArray ta)
 {
+    int(*ptrArray)[N][M];
+    switch (ta)
+    {
+    case 0:
+        ptrArray = &current_y;
+        break;
+    case 1:
+        ptrArray = &gradDir;
+        break;
+    default:
+        exit(1);
+    }
     int ci, cj;
     int end = start + delta;
     for (ci = start; ci < end; ci++)
     {
         for (cj = 0; cj < M; cj++)
         {
-            cache[ci - start][cj] = current_y[ci][cj];
+            cache[ci - start][cj] = (*ptrArray)[ci][cj];
         }
     }
 }
@@ -645,8 +682,20 @@ void copyToCache(int start, int delta)
     start: starting index row of current_y
     delta: number of rows
 */
-void copyFromCache(int start, int delta)
+void copyFromCache(int start, int delta, enum targetArray ta)
 {
+    int(*ptrArray)[N][M];
+    switch (ta)
+    {
+    case 0:
+        ptrArray = &current_y;
+        break;
+    case 1:
+        ptrArray = &gradDir;
+        break;
+    default:
+        exit(1);
+    }
     int ci, cj;
     int end = start + delta;
     for (ci = start; ci < end; ci++)
@@ -657,7 +706,7 @@ void copyFromCache(int start, int delta)
         }
         for (cj = 0; cj < M; cj++)
         {
-            current_y[ci][cj] = cache[ci - start][cj];
+            (*ptrArray)[ci][cj] = cache[ci - start][cj];
         }
     }
 }
