@@ -12,7 +12,7 @@
 #define KERNEL_SIZE 7
 #define KERNEL_SOBEL 3
 #define TILE_SIZE 100
-#define CACHE_ROWS 3
+#define CACHE_ROWS 10
 
 /* code for armulator*/
 #pragma arm section zidata = "cache"
@@ -149,6 +149,7 @@ void sobel(void)
     int *ptrCurrentY = &current_y[0][0];
 
     convolution();
+    fillCacheWithPadding(0, CACHE_ROWS);
 
     // Gradient Magnitude
     for (i = 0; i < N; i++)
@@ -161,32 +162,15 @@ void sobel(void)
             cache[cache_i][j + 2] = sqrt(gradX[i][j + 2] * gradX[i][j + 2] + gradY[i][j + 2] * gradY[i][j + 2]);
             cache[cache_i][j + 3] = sqrt(gradX[i][j + 3] * gradX[i][j + 3] + gradY[i][j + 3] * gradY[i][j + 3]);
         }
-        if (cache_i == 0 && i <= N - CACHE_ROWS)
+        if (i != 0 && cache_i == 0 && i <= N - CACHE_ROWS)
         {
-            printf("wrote lines %d->%d\n", i, i + CACHE_ROWS - 1);
-            copyFromCache(i, CACHE_ROWS);
+            printf("Wrote lines from cache %d-> %d\n", i - CACHE_ROWS, i - 1);
+            copyFromCache(i - CACHE_ROWS, CACHE_ROWS);
         }
-        else if (i < N && i > N - CACHE_ROWS)
-        {
-            cache_i = i % CACHE_ROWS;
-            for (tempi = 0; tempi < cache_i; tempi++)
-            {
-                for (tempj = 0; tempj < M; tempj++)
-                {
-                    cache[tempi][tempj] = sqrt(gradX[i][j] * gradX[i][j] + gradY[i][j] * gradY[i][j]);
-                }
-            }
-            fillCacheWithPadding(cache_i, CACHE_ROWS - cache_i);
-            copyFromCache(i, CACHE_ROWS);
-        }
-        // for (j = 0; j < M; j += 4)
-        // {
-        //     current_y[i][j + 0] = sqrt(gradX[i][j + 0] * gradX[i][j + 0] + gradY[i][j + 0] * gradY[i][j + 0]);
-        //     current_y[i][j + 1] = sqrt(gradX[i][j + 1] * gradX[i][j + 1] + gradY[i][j + 1] * gradY[i][j + 1]);
-        //     current_y[i][j + 2] = sqrt(gradX[i][j + 2] * gradX[i][j + 2] + gradY[i][j + 2] * gradY[i][j + 2]);
-        //     current_y[i][j + 3] = sqrt(gradX[i][j + 3] * gradX[i][j + 3] + gradY[i][j + 3] * gradY[i][j + 3]);
-        // }
     }
+    printf("Writing remaining lines %d-> %d\n", N - CACHE_ROWS, N);
+    copyFromCache(N - CACHE_ROWS, CACHE_ROWS);
+    fillCacheWithPadding(0, CACHE_ROWS);
 
     for (i = 0; i < N * M; i += 4)
     {
@@ -453,7 +437,6 @@ void hysteresis(int weak)
 
 void gaussianKernel1D(int sigma)
 {
-    // double *kernel = malloc(sizeof(double *) * size);
     int x;
     int center = KERNEL_SIZE / 2;
     double res = 0.0f;
@@ -642,6 +625,11 @@ void thresholdCheck(int *channel, int low, int high, int weak, int strong)
     }
 }
 
+/*
+    Loads current_y rows into cache
+    start: starting index row of current_y
+    delta: number of rows
+*/
 void copyToCache(int start, int delta)
 {
     int ci, cj;
@@ -655,6 +643,11 @@ void copyToCache(int start, int delta)
     }
 }
 
+/*
+    Loads cache rows into current_y
+    start: starting index row of current_y
+    delta: number of rows
+*/
 void copyFromCache(int start, int delta)
 {
     int ci, cj;
@@ -664,7 +657,7 @@ void copyFromCache(int start, int delta)
         if (cache[ci - start][0] == -1)
         {
             printf("skipping padding line %d\n", ci);
-            break;
+            continue;
         }
         for (cj = 0; cj < M; cj++)
         {
@@ -673,12 +666,17 @@ void copyFromCache(int start, int delta)
     }
 }
 
+/*
+    Flags concecutive cache rows as invalid
+    start: starting index row inside cache
+    delta: number of rows
+*/
 void fillCacheWithPadding(int start, int delta)
 {
     int ci;
     int end = start + delta;
     for (ci = start; ci < end; ci++)
     {
-        cache[ci - start][0] = -1;
+        cache[ci][0] = -1;
     }
 }
