@@ -95,7 +95,6 @@ void readImage(void)
     FILE *frame_c;
     if ((frame_c = fopen(filename, "rb")) == NULL)
     {
-        printf("current frame doesn't exist\n");
         exit(-1);
     }
 
@@ -157,7 +156,6 @@ void sobel(void)
         cache_i = i % CACHE_ROWS;
         if (i != 0 && cache_i == 0 && i <= N - CACHE_ROWS)
         {
-            printf("Wrote lines from cache %d-> %d\n", i - CACHE_ROWS, i - 1);
             copyFromCache(i - CACHE_ROWS, CACHE_ROWS);
         }
         for (j = 0; j < M; j += 4)
@@ -168,7 +166,6 @@ void sobel(void)
             cache[cache_i][j + 3] = sqrt(gradX[i][j + 3] * gradX[i][j + 3] + gradY[i][j + 3] * gradY[i][j + 3]);
         }
     }
-    printf("Writing remaining lines %d-> %d\n", N - CACHE_ROWS, N - 1);
     copyFromCache(N - CACHE_ROWS, CACHE_ROWS);
     fillCacheWithPadding(0, CACHE_ROWS);
 
@@ -656,7 +653,6 @@ void copyFromCache(int start, int delta)
     {
         if (cache[ci - start][0] == -1)
         {
-            printf("skipping padding line %d\n", ci);
             continue;
         }
         for (cj = 0; cj < M; cj++)
