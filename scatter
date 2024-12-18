@@ -1,0 +1,14 @@
+ROM 0x0000 0x66BA
+{
+    ROM 0x0000 0x66BA {
+        *.o (+RO)
+    } 
+    RAM 0x7000 0x160868
+    {
+        *.o (+RW, +ZI)
+        * (ram)
+    }
+    CACHE 0x167900 0x00CE4 {
+        * (cache)
+    }
+}

@@ -12,16 +12,22 @@
 #define KERNEL_SIZE 7
 #define KERNEL_SOBEL 3
 #define TILE_SIZE 100
+#define CACHE_ROWS 10
 
 /* code for armulator*/
-#pragma arm section zidata = "ram"
-int current_y[N][M];
+#pragma arm section zidata = "cache"
+int cache[CACHE_ROWS][M];
+int i, j, ii, jj;
 #pragma arm section
 
+#pragma arm section zidata = "ram"
+int current_y[N][M];
 double gaussian_kernel[KERNEL_SIZE];
 int gradX[N][M];
 int gradY[N][M];
+int gradMag[N][M];
 int gradDir[N][M];
+#pragma arm section
 
 const int sobel_kernel_x[3][3] = {
     {-1, 0, 1},
@@ -35,7 +41,11 @@ const int sobel_kernel_y[3][3] = {
     {1, 2, 1},
 };
 
-int i, j, ii, jj;
+const enum targetArray {
+    CURRENT_Y = 0,
+    GRADDIR = 1,
+    GRADMAG = 2
+} ta;
 
 /* FUNCTIONS */
 void readImage(void);
@@ -54,6 +64,10 @@ void convolutionHorizontal1D(void);
 void convolutionVertical1D(void);
 
 void thresholdCheck(int *channel, int low, int high, int weak, int strong);
+
+void copyToCache(int start, int delta, enum targetArray ta);
+void copyFromCache(int start, int delta, enum targetArray ta);
+void fillCacheWithPadding(int start, int delta);
 
 int main()
 {
@@ -88,7 +102,6 @@ void readImage(void)
     FILE *frame_c;
     if ((frame_c = fopen(filename, "rb")) == NULL)
     {
-        printf("current frame doesn't exist\n");
         exit(-1);
     }
 
@@ -135,29 +148,32 @@ void gaussianBlur(int kernelSize, int kernelSigma)
 
 void sobel(void)
 {
+    int cache_i = 0;
     double maxG = 0.0f; // Maximum gradient magnitude value, used for normalization
     double normCoeff = 0.0f;
     int *ptrCurrentY = &current_y[0][0];
+    enum targetArray ta = CURRENT_Y;
 
     convolution();
+    fillCacheWithPadding(0, CACHE_ROWS);
 
     // Gradient Magnitude
-    for (i = 0; i < N; i += TILE_SIZE)
+    for (i = 0; i < N; i++)
     {
-        for (j = 0; j < M; j += TILE_SIZE)
+        cache_i = i % CACHE_ROWS;
+        if (i != 0 && cache_i == 0 && i <= N - CACHE_ROWS)
         {
-            for (ii = i; ii < i + TILE_SIZE; ii++)
-            {
-                for (jj = j; jj < j + TILE_SIZE; jj += 4)
-                {
-                    current_y[ii][jj + 0] = sqrt(gradX[ii][jj + 0] * gradX[ii][jj + 0] + gradY[ii][jj + 0] * gradY[ii][jj + 0]);
-                    current_y[ii][jj + 1] = sqrt(gradX[ii][jj + 1] * gradX[ii][jj + 1] + gradY[ii][jj + 1] * gradY[ii][jj + 1]);
-                    current_y[ii][jj + 2] = sqrt(gradX[ii][jj + 2] * gradX[ii][jj + 2] + gradY[ii][jj + 2] * gradY[ii][jj + 2]);
-                    current_y[ii][jj + 3] = sqrt(gradX[ii][jj + 3] * gradX[ii][jj + 3] + gradY[ii][jj + 3] * gradY[ii][jj + 3]);
-                }
-            }
+            copyFromCache(i - CACHE_ROWS, CACHE_ROWS, ta);
+        }
+        for (j = 0; j < M; j += 4)
+        {
+            cache[cache_i][j + 0] = sqrt(gradX[i][j + 0] * gradX[i][j + 0] + gradY[i][j + 0] * gradY[i][j + 0]);
+            cache[cache_i][j + 1] = sqrt(gradX[i][j + 1] * gradX[i][j + 1] + gradY[i][j + 1] * gradY[i][j + 1]);
+            cache[cache_i][j + 2] = sqrt(gradX[i][j + 2] * gradX[i][j + 2] + gradY[i][j + 2] * gradY[i][j + 2]);
+            cache[cache_i][j + 3] = sqrt(gradX[i][j + 3] * gradX[i][j + 3] + gradY[i][j + 3] * gradY[i][j + 3]);
         }
     }
+    copyFromCache(N - CACHE_ROWS, CACHE_ROWS, ta);
 
     for (i = 0; i < N * M; i += 4)
     {
@@ -181,50 +197,59 @@ void sobel(void)
 
     // Normalize gradient magnitude (0 - 255)
     normCoeff = 255 / maxG;
-    for (i = 0; i < N; i += TILE_SIZE)
+    fillCacheWithPadding(0, CACHE_ROWS);
+    for (i = 0; i < N; i++)
     {
-        for (j = 0; j < M; j += TILE_SIZE)
+        cache_i = i % CACHE_ROWS;
+        if (i != 0 && cache_i == 0 && i <= N - CACHE_ROWS)
         {
-            for (ii = i; ii < i + TILE_SIZE; ii++)
-            {
-                for (jj = j; jj < j + TILE_SIZE; jj += 4)
-                {
-                    current_y[ii][jj + 0] = (current_y[ii][jj + 0] * normCoeff > 255) ? 255 : (int)(current_y[ii][jj + 0] * normCoeff);
-                    current_y[ii][jj + 1] = (current_y[ii][jj + 1] * normCoeff > 255) ? 255 : (int)(current_y[ii][jj + 1] * normCoeff);
-                    current_y[ii][jj + 2] = (current_y[ii][jj + 2] * normCoeff > 255) ? 255 : (int)(current_y[ii][jj + 2] * normCoeff);
-                    current_y[ii][jj + 3] = (current_y[ii][jj + 3] * normCoeff > 255) ? 255 : (int)(current_y[ii][jj + 3] * normCoeff);
-                }
-            }
+            copyFromCache(i - CACHE_ROWS, CACHE_ROWS, ta);
+        }
+        if (cache_i == 0 && i <= N - CACHE_ROWS)
+        {
+            copyToCache(i, CACHE_ROWS, ta);
+        }
+        for (j = 0; j < M; j += 4)
+        {
+            cache[cache_i][j + 0] = (cache[cache_i][j + 0] * normCoeff > 255) ? 255 : (int)(cache[cache_i][j + 0] * normCoeff);
+            cache[cache_i][j + 1] = (cache[cache_i][j + 1] * normCoeff > 255) ? 255 : (int)(cache[cache_i][j + 1] * normCoeff);
+            cache[cache_i][j + 2] = (cache[cache_i][j + 2] * normCoeff > 255) ? 255 : (int)(cache[cache_i][j + 2] * normCoeff);
+            cache[cache_i][j + 3] = (cache[cache_i][j + 3] * normCoeff > 255) ? 255 : (int)(cache[cache_i][j + 3] * normCoeff);
         }
     }
+    copyFromCache(N - CACHE_ROWS, CACHE_ROWS, ta);
 
+    ta = GRADDIR;
+    fillCacheWithPadding(0, CACHE_ROWS);
     // Gradient Direction
-    for (i = 0; i < N; i += TILE_SIZE)
+    for (i = 0; i < N; i++)
     {
-        for (j = 0; j < M; j += TILE_SIZE)
+        cache_i = i % CACHE_ROWS;
+        if (i != 0 && cache_i == 0 && i <= N - CACHE_ROWS)
         {
-            for (ii = i; ii < i + TILE_SIZE; ii++)
-            {
-                for (jj = j; jj < j + TILE_SIZE; jj += 4)
-                {
+            copyFromCache(i - CACHE_ROWS, CACHE_ROWS, ta);
+        }
+        for (j = 0; j < M; j += 4)
+        {
 
-                    gradDir[ii][jj + 0] = atan2(gradY[ii][jj + 0], gradX[ii][jj + 0]) * 180 / _PI;
-                    gradDir[ii][jj + 1] = atan2(gradY[ii][jj + 1], gradX[ii][jj + 1]) * 180 / _PI;
-                    gradDir[ii][jj + 2] = atan2(gradY[ii][jj + 2], gradX[ii][jj + 2]) * 180 / _PI;
-                    gradDir[ii][jj + 3] = atan2(gradY[ii][jj + 3], gradX[ii][jj + 3]) * 180 / _PI;
-                }
-            }
+            cache[cache_i][j + 0] = atan2(gradY[i][j + 0], gradX[i][j + 0]) * 180 / _PI;
+            cache[cache_i][j + 1] = atan2(gradY[i][j + 1], gradX[i][j + 1]) * 180 / _PI;
+            cache[cache_i][j + 2] = atan2(gradY[i][j + 2], gradX[i][j + 2]) * 180 / _PI;
+            cache[cache_i][j + 3] = atan2(gradY[i][j + 3], gradX[i][j + 3]) * 180 / _PI;
         }
     }
+    copyFromCache(N - CACHE_ROWS, CACHE_ROWS, ta);
 }
 
 void nms(void)
 {
     int dir, beforePixel, afterPixel;
+    int cache_i;
     int PI = 180;
-    int gradMag[N][M];
+    // int gradMag[N][M];
     int *ptrCurrentY = &current_y[0][0];
     int *ptrGradMag = &gradMag[0][0];
+    enum targetArray ta = GRADMAG;
 
     for (i = 0; i < N * M; i += 4)
     {
@@ -237,6 +262,9 @@ void nms(void)
     // Ignore the border pixels
     for (i = 1; i < N - 1; i++)
     {
+        // cache_i = (i) % (CACHE_ROWS - 1);
+        cache_i = 1;
+        copyToCache(i - 1, CACHE_ROWS - 1, ta);
         for (j = 1; j < M - 1; j++)
         {
             dir = gradDir[i][j];
@@ -245,30 +273,31 @@ void nms(void)
 
             if (((0 <= dir) || (dir < PI / 8)) || ((15 * PI / 8 <= dir) || (dir <= 2 * PI)))
             {
-                beforePixel = gradMag[i][j - 1];
-                afterPixel = gradMag[i][j + 1];
+                beforePixel = cache[cache_i][j - 1];
+                afterPixel = cache[cache_i][j + 1];
             }
             else if (((PI / 8 <= dir) || (dir < 3 * PI / 8)) || ((9 * PI / 8 <= dir) || (dir <= 11 * PI / 8)))
             {
-                beforePixel = gradMag[i + 1][j - 1];
-                afterPixel = gradMag[i - 1][j + 1];
+                beforePixel = cache[cache_i + 1][j - 1];
+                afterPixel = cache[cache_i - 1][j + 1];
             }
             else if (((3 * PI / 8 <= dir) || (dir < 5 * PI / 8)) || ((11 * PI / 8 <= dir) || (dir <= 13 * PI / 8)))
             {
-                beforePixel = gradMag[i - 1][j];
-                afterPixel = gradMag[i + 1][j];
+                beforePixel = cache[cache_i - 1][j];
+                afterPixel = cache[cache_i + 1][j];
             }
             else
             {
-                beforePixel = gradMag[i - 1][j - 1];
-                afterPixel = gradMag[i + 1][j + 1];
+                beforePixel = cache[cache_i - 1][j - 1];
+                afterPixel = cache[cache_i + 1][j + 1];
             }
 
-            if (!(gradMag[i][j] >= beforePixel && gradMag[i][j] >= afterPixel))
+            if (!(cache[cache_i][j] >= beforePixel && cache[cache_i][j] >= afterPixel))
             {
                 current_y[i][j] = 0;
             }
         }
+        // copyFromCache(i - CACHE_ROWS, CACHE_ROWS - 1, ta);
     }
 }
 
@@ -436,7 +465,6 @@ void hysteresis(int weak)
 
 void gaussianKernel1D(int sigma)
 {
-    // double *kernel = malloc(sizeof(double *) * size);
     int x;
     int center = KERNEL_SIZE / 2;
     double res = 0.0f;
@@ -622,5 +650,91 @@ void thresholdCheck(int *channel, int low, int high, int weak, int strong)
     else
     {
         *channel = 0;
+    }
+}
+
+/*
+    Loads current_y rows into cache
+    start: starting index row of current_y
+    delta: number of rows
+    target: 0->currnt_y, 1->gradDir
+*/
+void copyToCache(int start, int delta, enum targetArray ta)
+{
+    int(*ptrArray)[N][M];
+    int ci, cj;
+    int end = start + delta;
+    switch (ta)
+    {
+    case 0:
+        ptrArray = &current_y;
+        break;
+    case 1:
+        ptrArray = &gradDir;
+        break;
+    case 2:
+        ptrArray = &gradMag;
+        break;
+    default:
+        exit(1);
+    }
+    for (ci = start; ci < end; ci++)
+    {
+        for (cj = 0; cj < M; cj++)
+        {
+            cache[ci - start][cj] = (*ptrArray)[ci][cj];
+        }
+    }
+}
+
+/*
+    Loads cache rows into current_y
+    start: starting index row of current_y
+    delta: number of rows
+*/
+void copyFromCache(int start, int delta, enum targetArray ta)
+{
+    int(*ptrArray)[N][M];
+    int ci, cj;
+    int end = start + delta;
+    switch (ta)
+    {
+    case 0:
+        ptrArray = &current_y;
+        break;
+    case 1:
+        ptrArray = &gradDir;
+        break;
+    case 2:
+        ptrArray = &gradMag;
+        break;
+    default:
+        exit(1);
+    }
+    for (ci = start; ci < end; ci++)
+    {
+        if (cache[ci - start][0] == -1)
+        {
+            continue;
+        }
+        for (cj = 0; cj < M; cj++)
+        {
+            (*ptrArray)[ci][cj] = cache[ci - start][cj];
+        }
+    }
+}
+
+/*
+    Flags concecutive cache rows as invalid
+    start: starting index row inside cache
+    delta: number of rows
+*/
+void fillCacheWithPadding(int start, int delta)
+{
+    int ci;
+    int end = start + delta;
+    for (ci = start; ci < end; ci++)
+    {
+        cache[ci][0] = -1;
     }
 }
