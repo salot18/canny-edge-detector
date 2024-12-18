@@ -17,11 +17,11 @@
 /* code for armulator*/
 #pragma arm section zidata = "cache"
 int cache[CACHE_ROWS][M];
+int i, j, ii, jj;
 #pragma arm section
 
 #pragma arm section zidata = "ram"
 int current_y[N][M];
-int i, j, ii, jj;
 double gaussian_kernel[KERNEL_SIZE];
 int gradX[N][M];
 int gradY[N][M];
@@ -85,7 +85,7 @@ int main()
 
     // /* 3. NON-MAXIMUM SUPPRESSION */
     nms();
-    writeImage("NMSImage.yuv"); // and save it
+    // writeImage("NMSImage.yuv"); // and save it
 
     // /* 4. HYSTERESIS THRESHOLDING */
     thresholding(5, 20, weak); // (image, low, hight, weak)
@@ -149,7 +149,6 @@ void gaussianBlur(int kernelSize, int kernelSigma)
 void sobel(void)
 {
     int cache_i = 0;
-    int tempi, tempj;
     double maxG = 0.0f; // Maximum gradient magnitude value, used for normalization
     double normCoeff = 0.0f;
     int *ptrCurrentY = &current_y[0][0];
@@ -662,6 +661,8 @@ void thresholdCheck(int *channel, int low, int high, int weak, int strong)
 void copyToCache(int start, int delta, enum targetArray ta)
 {
     int(*ptrArray)[N][M];
+    int ci, cj;
+    int end = start + delta;
     switch (ta)
     {
     case 0:
@@ -676,8 +677,6 @@ void copyToCache(int start, int delta, enum targetArray ta)
     default:
         exit(1);
     }
-    int ci, cj;
-    int end = start + delta;
     for (ci = start; ci < end; ci++)
     {
         for (cj = 0; cj < M; cj++)
@@ -695,6 +694,8 @@ void copyToCache(int start, int delta, enum targetArray ta)
 void copyFromCache(int start, int delta, enum targetArray ta)
 {
     int(*ptrArray)[N][M];
+    int ci, cj;
+    int end = start + delta;
     switch (ta)
     {
     case 0:
@@ -709,8 +710,6 @@ void copyFromCache(int start, int delta, enum targetArray ta)
     default:
         exit(1);
     }
-    int ci, cj;
-    int end = start + delta;
     for (ci = start; ci < end; ci++)
     {
         if (cache[ci - start][0] == -1)
