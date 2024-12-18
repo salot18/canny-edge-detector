@@ -12,7 +12,7 @@
 #define KERNEL_SIZE 7
 #define KERNEL_SOBEL 3
 #define TILE_SIZE 100
-#define CACHE_ROWS 4
+#define CACHE_ROWS 10
 
 /* code for armulator*/
 #pragma arm section zidata = "cache"
@@ -262,8 +262,9 @@ void nms(void)
     // Ignore the border pixels
     for (i = 1; i < N - 1; i++)
     {
-        cache_i = (i) % (CACHE_ROWS - 1);
-        copyToCache(i, CACHE_ROWS - 1, ta);
+        // cache_i = (i) % (CACHE_ROWS - 1);
+        cache_i = 1;
+        copyToCache(i - 1, CACHE_ROWS - 1, ta);
         for (j = 1; j < M - 1; j++)
         {
             dir = gradDir[i][j];
