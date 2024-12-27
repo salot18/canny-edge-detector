@@ -9,15 +9,16 @@
 #define filename "sunflower_200x200_444.yuv"
 
 #define _PI 3.14159265359
-#define KERNEL_SIZE 7
+#define KERNEL_SIZE 3
 #define KERNEL_SOBEL 3
 #define TILE_SIZE 100
-#define CACHE_ROWS 10
+#define CACHE_ROWS 4
 
 /* code for armulator*/
 #pragma arm section zidata = "cache"
 int cache[CACHE_ROWS][M];
 int i, j, ii, jj;
+int conv_sum0 = 0, conv_sum1 = 0, conv_sum2 = 0, conv_sum3 = 0;
 #pragma arm section
 
 #pragma arm section zidata = "ram"
@@ -41,6 +42,8 @@ const int sobel_kernel_y[3][3] = {
     {1, 2, 1},
 };
 
+const float gauss_kernel_1d[KERNEL_SIZE] = {0.274069, 0.451863, 0.274069};
+
 const enum targetArray {
     CURRENT_Y = 0,
     GRADDIR = 1,
@@ -52,13 +55,12 @@ void readImage(void);
 void writeImage(char *name);
 
 /* Canny Algorithm */
-void gaussianBlur(int kernelSize, int kernelSigma);
+void gaussianBlur(void);
 void sobel(void);
 void nms(void);
 void thresholding(int low, int high, int weak);
 void hysteresis(int weak);
 
-void gaussianKernel1D(int sigma);
 void convolution(void);
 void convolutionHorizontal1D(void);
 void convolutionVertical1D(void);
@@ -67,7 +69,6 @@ void thresholdCheck(int *channel, int low, int high, int weak, int strong);
 
 void copyToCache(int start, int delta, enum targetArray ta);
 void copyFromCache(int start, int delta, enum targetArray ta);
-void fillCacheWithPadding(int start, int delta);
 
 int main()
 {
@@ -76,19 +77,19 @@ int main()
     readImage();
 
     /* 1. GAUSSIAN BLUR */
-    gaussianBlur(7, 1);
+    gaussianBlur();
     // writeImage("BlurredImage.yuv"); // and save it
 
     /* 2. SOBEL MASK */
     sobel();
     // writeImage("GradMagImage.yuv"); // and save it
 
-    // /* 3. NON-MAXIMUM SUPPRESSION */
+    /* 3. NON-MAXIMUM SUPPRESSION */
     nms();
     // writeImage("NMSImage.yuv"); // and save it
 
-    // /* 4. HYSTERESIS THRESHOLDING */
-    thresholding(5, 20, weak); // (image, low, hight, weak)
+    /* 4. HYSTERESIS THRESHOLDING */
+    thresholding(5, 20, weak);
     // writeImage("ThreshImage.yuv"); // and save it
 
     hysteresis(weak);
@@ -138,10 +139,8 @@ void writeImage(char *name)
     fclose(frame_yuv);
 }
 
-void gaussianBlur(int kernelSize, int kernelSigma)
+void gaussianBlur(void)
 {
-    gaussianKernel1D(kernelSigma);
-
     convolutionHorizontal1D();
     convolutionVertical1D();
 }
@@ -155,7 +154,6 @@ void sobel(void)
     enum targetArray ta = CURRENT_Y;
 
     convolution();
-    fillCacheWithPadding(0, CACHE_ROWS);
 
     // Gradient Magnitude
     for (i = 0; i < N; i++)
@@ -197,7 +195,6 @@ void sobel(void)
 
     // Normalize gradient magnitude (0 - 255)
     normCoeff = 255 / maxG;
-    fillCacheWithPadding(0, CACHE_ROWS);
     for (i = 0; i < N; i++)
     {
         cache_i = i % CACHE_ROWS;
@@ -220,7 +217,6 @@ void sobel(void)
     copyFromCache(N - CACHE_ROWS, CACHE_ROWS, ta);
 
     ta = GRADDIR;
-    fillCacheWithPadding(0, CACHE_ROWS);
     // Gradient Direction
     for (i = 0; i < N; i++)
     {
@@ -244,9 +240,8 @@ void sobel(void)
 void nms(void)
 {
     int dir, beforePixel, afterPixel;
-    int cache_i;
+    int cache_i = 1;
     int PI = 180;
-    // int gradMag[N][M];
     int *ptrCurrentY = &current_y[0][0];
     int *ptrGradMag = &gradMag[0][0];
     enum targetArray ta = GRADMAG;
@@ -262,14 +257,10 @@ void nms(void)
     // Ignore the border pixels
     for (i = 1; i < N - 1; i++)
     {
-        // cache_i = (i) % (CACHE_ROWS - 1);
-        cache_i = 1;
         copyToCache(i - 1, CACHE_ROWS - 1, ta);
         for (j = 1; j < M - 1; j++)
         {
             dir = gradDir[i][j];
-
-            // ################## REVIEW THE CONDITIONS #########################
 
             if (((0 <= dir) || (dir < PI / 8)) || ((15 * PI / 8 <= dir) || (dir <= 2 * PI)))
             {
@@ -297,30 +288,36 @@ void nms(void)
                 current_y[i][j] = 0;
             }
         }
-        // copyFromCache(i - CACHE_ROWS, CACHE_ROWS - 1, ta);
     }
 }
 
 void thresholding(int low, int high, int weak)
 {
     int strong = 255;
+    int cache_i = 0;
 
-    for (i = 0; i < N; i += TILE_SIZE)
+    enum targetArray ta = CURRENT_Y;
+
+    for (i = 0; i < N; i++)
     {
-        for (j = 0; j < M; j += TILE_SIZE)
+        cache_i = i % CACHE_ROWS;
+        if (i != 0 && cache_i == 0 && i <= N - CACHE_ROWS)
         {
-            for (ii = i; ii < i + TILE_SIZE; ii++)
-            {
-                for (jj = j; jj < j + TILE_SIZE; jj += 4)
-                {
-                    thresholdCheck(&current_y[ii][jj + 0], low, high, weak, strong);
-                    thresholdCheck(&current_y[ii][jj + 1], low, high, weak, strong);
-                    thresholdCheck(&current_y[ii][jj + 2], low, high, weak, strong);
-                    thresholdCheck(&current_y[ii][jj + 3], low, high, weak, strong);
-                }
-            }
+            copyFromCache(i - CACHE_ROWS, CACHE_ROWS, ta);
+        }
+        if (cache_i == 0 && i <= N - CACHE_ROWS)
+        {
+            copyToCache(i, CACHE_ROWS, ta);
+        }
+        for (j = 0; j < M; j += 4)
+        {
+            thresholdCheck(&cache[cache_i][j + 0], low, high, weak, strong);
+            thresholdCheck(&cache[cache_i][j + 1], low, high, weak, strong);
+            thresholdCheck(&cache[cache_i][j + 2], low, high, weak, strong);
+            thresholdCheck(&cache[cache_i][j + 3], low, high, weak, strong);
         }
     }
+    copyFromCache(N - CACHE_ROWS, CACHE_ROWS, ta);
 }
 
 void hysteresis(int weak)
@@ -463,106 +460,87 @@ void hysteresis(int weak)
     }
 }
 
-void gaussianKernel1D(int sigma)
-{
-    int x;
-    int center = KERNEL_SIZE / 2;
-    double res = 0.0f;
-    double sum = 0.0f;
-
-    for (i = 0; i < KERNEL_SIZE; i++) // checking purpose
-    {
-        x = i - center;
-        res = exp(-((double)(x * x) / (2 * sigma * sigma)));
-        sum += res;
-        gaussian_kernel[i] = res;
-    }
-
-    // Normalize the kernel
-    for (i = 0; i < KERNEL_SIZE; i += 4)
-    {
-        gaussian_kernel[i] = gaussian_kernel[i] / sum;
-        gaussian_kernel[i + 1] = gaussian_kernel[i + 1] / sum;
-        gaussian_kernel[i + 2] = gaussian_kernel[i + 2] / sum;
-        gaussian_kernel[i + 3] = gaussian_kernel[i + 3] / sum;
-    }
-}
-
 void convolution(void)
 {
     int ki, kj;
     int kernelCenter = KERNEL_SOBEL / 2;
-    int sum0 = 0, sum1 = 0, sum2 = 0, sum3 = 0;
+
+    int cache_i = 1;
+    enum targetArray ta = CURRENT_Y;
 
     //  Convolution X
     for (i = 0; i < N; i++)
     {
+        copyToCache(i, CACHE_ROWS - 1, ta);
         for (j = 0; j < M; j += 4)
         {
-            sum0 = sum1 = sum2 = sum3 = 0;
+            conv_sum0 = conv_sum1 = conv_sum2 = conv_sum3 = 0;
             for (ki = -kernelCenter; ki <= kernelCenter; ki++)
             {
                 for (kj = -kernelCenter; kj <= kernelCenter; kj++)
                 {
-                    if (i + ki >= 0 && i + ki < N && j + kj >= 0 && j + kj < M)
+                    if (j + kj >= 0 && j + kj < M)
                     {
-                        sum0 += current_y[i + ki][j + kj] * sobel_kernel_x[ki + kernelCenter][kj + kernelCenter];
+                        conv_sum0 += cache[cache_i + ki][j + kj] * sobel_kernel_x[ki + kernelCenter][kj + kernelCenter];
                     }
-                    if (i + ki >= 0 && i + ki < N && j + 1 + kj >= 0 && j + 1 + kj < M)
+                    if (j + 1 + kj >= 0 && j + 1 + kj < M)
                     {
-                        sum1 += current_y[i + ki][j + 1 + kj] * sobel_kernel_x[ki + kernelCenter][kj + kernelCenter];
+                        conv_sum1 += cache[cache_i + ki][j + 1 + kj] * sobel_kernel_x[ki + kernelCenter][kj + kernelCenter];
                     }
-                    if (i + ki >= 0 && i + ki < N && j + 2 + kj >= 0 && j + 2 + kj < M)
+                    if (j + 2 + kj >= 0 && j + 2 + kj < M)
                     {
-                        sum2 += current_y[i + ki][j + 2 + kj] * sobel_kernel_x[ki + kernelCenter][kj + kernelCenter];
+                        conv_sum2 += cache[cache_i + ki][j + 2 + kj] * sobel_kernel_x[ki + kernelCenter][kj + kernelCenter];
                     }
-                    if (i + ki >= 0 && i + ki < N && j + 3 + kj >= 0 && j + 3 + kj < M)
+                    if (j + 3 + kj >= 0 && j + 3 + kj < M)
                     {
-                        sum3 += current_y[i + ki][j + 3 + kj] * sobel_kernel_x[ki + kernelCenter][kj + kernelCenter];
+                        conv_sum3 += cache[cache_i + ki][j + 3 + kj] * sobel_kernel_x[ki + kernelCenter][kj + kernelCenter];
                     }
                 }
             }
 
-            gradX[i][j] = sum0;
-            gradX[i][j + 1] = sum1;
-            gradX[i][j + 2] = sum2;
-            gradX[i][j + 3] = sum3;
+            gradX[i][j] = conv_sum0;
+            gradX[i][j + 1] = conv_sum1;
+            gradX[i][j + 2] = conv_sum2;
+            gradX[i][j + 3] = conv_sum3;
         }
     }
 
     //  Convolution Y
     for (i = 0; i < N; i++)
     {
+        copyToCache(i, CACHE_ROWS - 1, ta);
+
         for (j = 0; j < M; j += 4)
         {
-            sum0 = sum1 = sum2 = sum3 = 0;
+            conv_sum0 = conv_sum1 = conv_sum2 = conv_sum3 = 0;
+
             for (ki = -kernelCenter; ki <= kernelCenter; ki++)
             {
                 for (kj = -kernelCenter; kj <= kernelCenter; kj++)
                 {
-                    if (i + ki >= 0 && i + ki < N && j + kj >= 0 && j + kj < M)
+                    if (j + kj >= 0 && j + kj < M)
                     {
-                        sum0 += current_y[i + ki][j + kj] * sobel_kernel_y[ki + kernelCenter][kj + kernelCenter];
+                        conv_sum0 += cache[cache_i + ki][j + kj] * sobel_kernel_y[ki + kernelCenter][kj + kernelCenter];
                     }
-                    if (i + ki >= 0 && i + ki < N && j + 1 + kj >= 0 && j + 1 + kj < M)
+                    if (j + 1 + kj >= 0 && j + 1 + kj < M)
                     {
-                        sum1 += current_y[i + ki][j + 1 + kj] * sobel_kernel_y[ki + kernelCenter][kj + kernelCenter];
+                        conv_sum1 += cache[cache_i + ki][j + 1 + kj] * sobel_kernel_y[ki + kernelCenter][kj + kernelCenter];
                     }
-                    if (i + ki >= 0 && i + ki < N && j + 2 + kj >= 0 && j + 2 + kj < M)
+                    if (j + 2 + kj >= 0 && j + 2 + kj < M)
                     {
-                        sum2 += current_y[i + ki][j + 2 + kj] * sobel_kernel_y[ki + kernelCenter][kj + kernelCenter];
+                        conv_sum2 += cache[cache_i + ki][j + 2 + kj] * sobel_kernel_y[ki + kernelCenter][kj + kernelCenter];
                     }
-                    if (i + ki >= 0 && i + ki < N && j + 3 + kj >= 0 && j + 3 + kj < M)
+                    if (j + 3 + kj >= 0 && j + 3 + kj < M)
                     {
-                        sum3 += current_y[i + ki][j + 3 + kj] * sobel_kernel_y[ki + kernelCenter][kj + kernelCenter];
+                        conv_sum3 += cache[cache_i + ki][j + 3 + kj] * sobel_kernel_y[ki + kernelCenter][kj + kernelCenter];
                     }
                 }
             }
 
-            gradY[i][j] = sum0;
-            gradY[i][j + 1] = sum1;
-            gradY[i][j + 2] = sum2;
-            gradY[i][j + 3] = sum3;
+            gradY[i][j] = conv_sum0;
+            gradY[i][j + 1] = conv_sum1;
+            gradY[i][j + 2] = conv_sum2;
+            gradY[i][j + 3] = conv_sum3;
         }
     }
 }
@@ -571,7 +549,6 @@ void convolutionHorizontal1D(void)
 {
     int ki;
     int kCenter = KERNEL_SIZE / 2;
-    int sum = 0;
     int output[N][M];
     int *ptrCurrentY = &current_y[0][0];
     int *ptrOutput = &output[0][0];
@@ -580,16 +557,16 @@ void convolutionHorizontal1D(void)
     {
         for (j = 0; j < M; j++)
         {
-            sum = 0;
+            conv_sum0 = 0;
             // Apply the kernel horizontally
             for (ki = -kCenter; ki <= kCenter; ki++)
             {
                 if (j + ki >= 0 && j + ki < N)
-                { // Boundary checki
-                    sum += current_y[i][j + ki] * gaussian_kernel[ki + kCenter];
+                {
+                    conv_sum0 += current_y[i][j + ki] * gauss_kernel_1d[ki + kCenter];
                 }
             }
-            output[i][j] = sum;
+            output[i][j] = conv_sum0;
         }
     }
 
@@ -606,7 +583,6 @@ void convolutionVertical1D(void)
 {
     int ki;
     int kCenter = KERNEL_SIZE / 2;
-    int sum = 0;
     int output[N][M];
     int *ptrCurrentY = &current_y[0][0];
     int *ptrOutput = &output[0][0];
@@ -615,16 +591,16 @@ void convolutionVertical1D(void)
     {
         for (j = 0; j < M; j++)
         {
-            sum = 0;
+            conv_sum0 = 0;
             // Apply the kernel horizontally
             for (ki = -kCenter; ki <= kCenter; ki++)
             {
                 if (i + ki >= 0 && i + ki < M)
                 {
-                    sum += current_y[i + ki][j] * gaussian_kernel[ki + kCenter];
+                    conv_sum0 += current_y[i + ki][j] * gauss_kernel_1d[ki + kCenter];
                 }
             }
-            output[i][j] = sum;
+            output[i][j] = conv_sum0;
         }
     }
 
@@ -721,20 +697,5 @@ void copyFromCache(int start, int delta, enum targetArray ta)
         {
             (*ptrArray)[ci][cj] = cache[ci - start][cj];
         }
-    }
-}
-
-/*
-    Flags concecutive cache rows as invalid
-    start: starting index row inside cache
-    delta: number of rows
-*/
-void fillCacheWithPadding(int start, int delta)
-{
-    int ci;
-    int end = start + delta;
-    for (ci = start; ci < end; ci++)
-    {
-        cache[ci][0] = -1;
     }
 }
