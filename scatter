@@ -1,6 +1,6 @@
-ROM 0x0000 0x66BA
+ROM 0x0000 0x5DC0
 {
-    ROM 0x0000 0x66BA {
+    ROM 0x0000 0x5DC0 {
         *.o (+RO)
     } 
     RAM 0x7000 0x160868
@@ -8,7 +8,10 @@ ROM 0x0000 0x66BA
         *.o (+RW, +ZI)
         * (ram)
     }
-    CACHE 0x167900 0x00CE4 {
-        * (cache)
+    L2DATA 0x167900 0x00CE4 {
+        * (l2data)
+    }
+    L1DATA 0x1685F0 0x068 {
+        * (l1data)
     }
 }
