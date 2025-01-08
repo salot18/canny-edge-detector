@@ -4,8 +4,8 @@
 #include <stdlib.h>
 
 // SUNFLOWER
-#define N 200 // height
-#define M 200 // width
+#define N 200
+#define M 200
 #define filename "sunflower_200x200_444.yuv"
 
 #define _PI 3.14159265359
@@ -26,7 +26,6 @@ int startCacheIdx = 0;
 
 #pragma arm section zidata="ram"
 int current_y[N][M];
-double gaussian_kernel[KERNEL_SIZE];
 int gradX[N][M];
 int gradY[N][M];
 int gradMag[N][M];
@@ -55,9 +54,10 @@ const enum targetArray {
     GRADY = 4
 } ta;
 
-/* FUNCTIONS */
+/* utility functions */
 void readImage(void);
 void writeImage(char *name);
+void thresholdCheck(int *channel, int low, int high, int weak, int strong);
 
 /* Canny Algorithm */
 void gaussianBlur(void);
@@ -70,8 +70,7 @@ void convolution(void);
 void convolutionHorizontal1D(void);
 void convolutionVertical1D(void);
 
-void thresholdCheck(int *channel, int low, int high, int weak, int strong);
-
+/* data transfer helper functions */
 void copyToL1(int start_row, int delta_rows, int start_col, int delta_cols, int skip_lines, enum targetArray target);
 void copyFromL1(int start_row, int delta_rows, int start_col, int delta_cols, enum targetArray target);
 
@@ -80,7 +79,6 @@ void copyFromL2(int start, int delta, enum targetArray target);
 
 void copyL2ToL1(int start_row, int start_col);
 void rotateL2(int row);
-
 
 int main()
 {
@@ -103,9 +101,9 @@ int main()
     /* 4. HYSTERESIS THRESHOLDING */
     thresholding(5, 20, weak);
     // writeImage("ThreshImage.yuv"); // and save it
-
     hysteresis(weak);
     writeImage("FinalImage.yuv"); // and save it
+
 
     return 0;
 }
@@ -235,6 +233,7 @@ void sobel(void)
     copyFromL2(N - CACHE_ROWS, CACHE_ROWS, ta);
 
     ta = GRADDIR;
+
     // Gradient Direction
     for (i = 0; i < N; i++)
     {
@@ -264,7 +263,6 @@ void nms(void)
     int PI = 180;
     enum targetArray ta = CURRENT_Y;
 
-    // Ignore the border pixels
     for (i = 1; i < N - 1; i++)
     {
         copyToL2(i - 1, CACHE_ROWS - 1, ta);
@@ -345,10 +343,10 @@ void hysteresis(int weak)
 
     for (i = 0; i < N * M; i += 4)
     {
-        *(ptrT2B + i) = *(ptrCurrentY + i);
-        *(ptrB2T + i) = *(ptrCurrentY + i);
-        *(ptrL2R + i) = *(ptrCurrentY + i);
-        *(ptrR2L + i) = *(ptrCurrentY + i);
+        *(ptrT2B + i + 0) = *(ptrCurrentY + i + 0);
+        *(ptrB2T + i + 0) = *(ptrCurrentY + i + 0);
+        *(ptrL2R + i + 0) = *(ptrCurrentY + i + 0);
+        *(ptrR2L + i + 0) = *(ptrCurrentY + i + 0);
 
         *(ptrT2B + i + 1) = *(ptrCurrentY + i + 1);
         *(ptrB2T + i + 1) = *(ptrCurrentY + i + 1);
@@ -628,6 +626,7 @@ void copyToL2(int start, int delta, enum targetArray target)
     int ci, cj;
     int(*ptrArray)[N][M] = &current_y;
     int end = start + delta;
+
     switch (target)
     {
     case 0:
@@ -642,6 +641,7 @@ void copyToL2(int start, int delta, enum targetArray target)
     default:
         ptrArray = &current_y;
     }
+
     for (ci = start; ci < end; ci++)
     {
         for (cj = 0; cj < M; cj++)
@@ -656,6 +656,7 @@ void copyFromL2(int start, int delta, enum targetArray target)
     int ci, cj;
     int(*ptrArray)[N][M] = &current_y;
     int end = start + delta;
+
     switch (target)
     {
     case 0:
@@ -670,6 +671,7 @@ void copyFromL2(int start, int delta, enum targetArray target)
     default:
         ptrArray = &current_y;
     }
+
     for (ci = start; ci < end; ci++)
     {
         for (cj = 0; cj < M; cj++)
@@ -686,6 +688,7 @@ void copyFromL1(int start_row, int delta_rows, int start_col, int delta_cols, en
     int(*ptrArray)[N][M] = &current_y;
     int end_row = start_row + delta_rows;
     int end_col = start_col + delta_cols;
+
     switch (target)
     {
     case 0:
@@ -703,16 +706,12 @@ void copyFromL1(int start_row, int delta_rows, int start_col, int delta_cols, en
     case 4:
         ptrArray = &gradY;
         break;
-
     default:
         ptrArray = &current_y;
     }
+
     for (ci = start_row; ci < end_row; ci++)
     {
-        if (blk[ci - start_row][0] == -1)
-        {
-            continue;
-        }
         for (cj = start_col; cj < end_col; cj++)
         {
             (*ptrArray)[ci][cj] = blk[ci - start_row][cj - start_col];
@@ -726,6 +725,7 @@ void copyToL1(int start_row, int delta_rows, int start_col, int delta_cols, int 
     int (*ptrArray)[N][M] = &current_y;
     int end_row = start_row + delta_rows;
     int end_col = start_col + delta_cols;
+
     switch (target)
     {
     case 0:
@@ -759,11 +759,12 @@ void copyToL1(int start_row, int delta_rows, int start_col, int delta_cols, int 
 void rotateL2(int row){
     int ri;
     
-    // insert
+    // insert new row
     for (ri = 0; ri < M; ri++)
     {
         cache[startCacheIdx][ri] = current_y[row][ri];
     }
+    
     // move pointer
     startCacheIdx = (startCacheIdx + 1) % KERNEL_SIZE;
 }
